@@ -1,22 +1,14 @@
 {
   "name": "elasticsearch",
-  "version": "0.0.1",
+  "version": "1.3.0",
   "authors": [
     "Spencer Alger <spencer@spenceralger.com>"
   ],
-  "description": "The official low-level Elasticsearch client, for use in the browser",
+  "description": "The official low-level Elasticsearch client, for use in the browser.",
   "main": "elasticsearch.js",
   "keywords": [
     "elasticsearch",
-    "elasticsearch",
     "client"
   ],
-  "license": "Apache 2.0",
-  "ignore": [
-    "**/.*",
-    "node_modules",
-    "bower_components",
-    "test",
-    "tests"
-  ]
+  "license": "Apache 2.0"
 }
