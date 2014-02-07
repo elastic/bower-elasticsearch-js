@@ -1,4 +1,4 @@
-/*! elasticsearch - v1.5.0 - 2014-02-06
+/*! elasticsearch - v1.5.1 - 2014-02-06
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -24474,9 +24474,9 @@ function Transport(config) {
   }
 
   if (config.sniffInterval) {
-    this._sniffTimeout = setTimeout(function doSniff() {
+    this._timeout(function doSniff() {
       self.sniff();
-      self._sniffTimeout = setTimeout(doSniff, config.sniffInterval);
+      self._timeout(doSniff, config.sniffInterval);
     }, config.sniffInterval);
   }
 
@@ -24599,7 +24599,7 @@ Transport.prototype.request = function (params, cb) {
       return;
     }
 
-    clearTimeout(requestTimeoutId);
+    self._timeout(requestTimeoutId);
     var parsedBody;
     var isJson = !headers || (headers['content-type'] && ~headers['content-type'].indexOf('application/json'));
 
@@ -24661,14 +24661,14 @@ Transport.prototype.request = function (params, cb) {
 
     aborted = true;
     remainingRetries = 0;
-    clearTimeout(requestTimeoutId);
+    self._timeout(requestTimeoutId);
     if (typeof requestAborter === 'function') {
       requestAborter();
     }
   }
 
   if (requestTimeout && requestTimeout !== Infinity) {
-    requestTimeoutId = setTimeout(function () {
+    requestTimeoutId = this._timeout(function () {
       respond(new errors.RequestTimeout('Request Timeout after ' + requestTimeout + 'ms'));
       abortRequest();
     }, requestTimeout);
@@ -24695,7 +24695,31 @@ Transport.prototype.request = function (params, cb) {
   return ret;
 };
 
+Transport.prototype._timeout = function (cb, delay) {
+  this._timers = this._timers || [];
+  var id;
 
+  if ('function' !== typeof cb) {
+    id = cb;
+    cb = void 0;
+  }
+
+  if (cb) {
+    // set the timer
+    id = setTimeout(cb, delay);
+    this._timers.push(id);
+    return id;
+  }
+
+  if (id) {
+    clearTimeout(id);
+
+    var i = this._timers.indexOf(id);
+    if (i !== -1) {
+      this._timers.splice(i, 1);
+    }
+  }
+};
 
 /**
  * Ask an ES node for a list of all the nodes, add/remove nodes from the connection
@@ -24730,6 +24754,7 @@ Transport.prototype.sniff = function (cb) {
  */
 Transport.prototype.close = function () {
   this.log.close();
+  _.each(this._timers, clearTimeout);
   this.connectionPool.close();
 };
 
