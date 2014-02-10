@@ -1,4 +1,4 @@
-/*! elasticsearch - v1.5.2 - 2014-02-07
+/*! elasticsearch - v1.5.3 - 2014-02-10
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -17950,6 +17950,48 @@ api.cat.prototype.shards = ca({
       fmt: '/_cat/shards'
     }
   ]
+});
+
+/**
+ * Perform a [cat.threadPool](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat-thread-pool.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {Boolean} params.fullId - Enables displaying the complete node ids
+ */
+api.cat.prototype.threadPool = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    },
+    fullId: {
+      type: 'boolean',
+      'default': false,
+      name: 'full_id'
+    }
+  },
+  url: {
+    fmt: '/_cat/thread_pool'
+  }
 });
 
 /**
