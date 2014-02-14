@@ -1,4 +1,4 @@
-/*! elasticsearch - v1.5.5 - 2014-02-13
+/*! elasticsearch - v1.5.6 - 2014-02-14
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -19771,6 +19771,9 @@ api.search = ca({
           type: 'list'
         }
       }
+    },
+    {
+      fmt: '/_search'
     }
   ],
   method: 'POST'
@@ -25187,7 +25190,6 @@ Client.apis = require('./apis');
 module.exports = ClientAction;
 
 var _ = require('./utils');
-var when = require('when');
 
 function ClientAction(spec) {
   if (!_.isPlainObject(spec.params)) {
@@ -25213,7 +25215,9 @@ function ClientAction(spec) {
       if (typeof cb === 'function') {
         _.nextTick(cb, e);
       } else {
-        return when.reject(e);
+        var def = this.transport.defer();
+        def.reject(e);
+        return def.promise;
       }
     }
   }
@@ -25485,7 +25489,7 @@ ClientAction.proxy = function (fn, spec) {
   };
 };
 
-},{"./utils":212,"when":189}],196:[function(require,module,exports){
+},{"./utils":212}],196:[function(require,module,exports){
 module.exports = ConnectionAbstract;
 
 var _ = require('./utils');
