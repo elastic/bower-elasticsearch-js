@@ -1,4 +1,4 @@
-/*! elasticsearch - v1.5.4 - 2014-02-11
+/*! elasticsearch - v1.5.5 - 2014-02-13
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -16157,6 +16157,28 @@ api.cluster.prototype.nodeStats = ca({
       fmt: '/_nodes/stats'
     }
   ]
+});
+
+/**
+ * Perform a [cluster.pendingTasks](http://www.elasticsearch.org/guide/en/elasticsearch/reference/0.90/cluster-pending.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ */
+api.cluster.prototype.pendingTasks = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/_cluster/pending_tasks'
+  }
 });
 
 /**
