@@ -1,4 +1,4 @@
-/*! elasticsearch - v1.5.14 - 2014-03-18
+/*! elasticsearch - v2.0.0 - 2014-03-27
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -24215,6 +24215,13 @@ var _ = require('./utils');
 function Client(config) {
   config = config || {};
 
+  if (config.__reused) {
+    throw new Error('Do not reuse objects to configure the elasticsearch Client class: ' +
+      'https://github.com/elasticsearch/elasticsearch-js/issues/33');
+  } else {
+    config.__reused = true;
+  }
+
   function EsApiClient() {
     // our client will log minimally by default
     if (!config.hasOwnProperty('log')) {
@@ -24239,7 +24246,7 @@ function Client(config) {
     delete this._namespaces;
   }
 
-  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '0.90');
+  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.0');
   if (!config.sniffEndpoint && EsApiClient.prototype === Client.apis['0.90']) {
     config.sniffEndpoint = '/_cluster/nodes';
   }
@@ -26066,7 +26073,7 @@ module.exports = Transport;
 var _ = require('./utils');
 var errors = require('./errors');
 var Host = require('./host');
-var when = require('when');
+var Promise = require('bluebird');
 
 function Transport(config) {
   var self = this;
@@ -26155,7 +26162,7 @@ Transport.nodesToHostCallbacks = {
 };
 
 Transport.prototype.defer = function () {
-  return when.defer();
+  return Promise.defer();
 };
 
 /**
@@ -26427,7 +26434,7 @@ Transport.prototype.close = function () {
   this.connectionPool.close();
 };
 
-},{"./connection_pool":196,"./errors":199,"./host":200,"./log":201,"./nodes_to_host":205,"./serializers/json":209,"./utils":211,"when":1}],211:[function(require,module,exports){
+},{"./connection_pool":196,"./errors":199,"./host":200,"./log":201,"./nodes_to_host":205,"./serializers/json":209,"./utils":211,"bluebird":1}],211:[function(require,module,exports){
 var process=require("__browserify_process"),Buffer=require("__browserify_Buffer").Buffer;var path = require('path');
 var _ = require('lodash-node/modern');
 var nodeUtils = require('util');
