@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.1.0 - 2014-03-27
+/*! elasticsearch - v2.1.1 - 2014-04-01
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -29506,8 +29506,7 @@ api.create = ca.proxy(api.index, {
 module.exports = {
   '1.1': require('./1_1'),
   '1.0': require('./1_0'),
-  '0.90': require('./0_90'),
-  _default: '1.1'
+  '0.90': require('./0_90')
 };
 
 },{"./0_90":190,"./1_0":191,"./1_1":192}],194:[function(require,module,exports){
@@ -29576,7 +29575,7 @@ function Client(config) {
     delete this._namespaces;
   }
 
-  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, Client.apis._default);
+  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.1');
   if (!config.sniffEndpoint && EsApiClient.prototype === Client.apis['0.90']) {
     config.sniffEndpoint = '/_cluster/nodes';
   }
@@ -29585,7 +29584,7 @@ function Client(config) {
 }
 
 Client.apis = require('./apis');
-},{"./apis":193,"./transport":211,"./utils":212}],195:[function(require,module,exports){
+},{"./apis":193,"./transport":211,"./utils":213}],195:[function(require,module,exports){
 /**
  * Constructs a function that can be called to make a request to ES
  * @type {[type]}
@@ -29717,7 +29716,7 @@ function resolveUrl(url, params) {
 
     for (i = 0; i < url.reqParamKeys.length; i ++) {
       key = url.reqParamKeys[i];
-      if (!params.hasOwnProperty(key)) {
+      if (!params.hasOwnProperty(key) || params[key] == null) {
         // missing a required param
         return false;
       } else {
@@ -29740,7 +29739,7 @@ function resolveUrl(url, params) {
     for (i = 0; i < url.optParamKeys.length; i ++) {
       key = url.optParamKeys[i];
       if (params[key]) {
-        if (castType[url.opt[key].type]) {
+        if (castType[url.opt[key].type] || params[key] == null) {
           vars[key] = castType[url.opt[key].type](url.opt[key], params[key], key);
         } else {
           vars[key] = params[key];
@@ -29892,7 +29891,7 @@ ClientAction.proxy = function (fn, spec) {
   };
 };
 
-},{"./utils":212}],196:[function(require,module,exports){
+},{"./utils":213}],196:[function(require,module,exports){
 module.exports = ConnectionAbstract;
 
 var _ = require('./utils');
@@ -29992,7 +29991,7 @@ ConnectionAbstract.prototype.setStatus = function (status) {
     this.removeAllListeners();
   }
 };
-},{"./errors":200,"./host":201,"./log":202,"./utils":212,"events":4}],197:[function(require,module,exports){
+},{"./errors":200,"./host":201,"./log":202,"./utils":213,"events":4}],197:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Manager of connections to a node(s), capable of ensuring that connections are clear and living
  * before providing them to the application
@@ -30195,7 +30194,7 @@ ConnectionPool.prototype._onConnectionDied = function (connection, alreadyWasDea
 
   var ms = this.calcDeadTimeout(timeout.attempt, this.deadTimeout);
   timeout.id = setTimeout(timeout.revive, ms);
-  timeout.runAt = Date.now() + ms;
+  timeout.runAt = _.now() + ms;
 };
 
 ConnectionPool.prototype._selectDeadConnection = function (cb) {
@@ -30325,7 +30324,7 @@ ConnectionPool.prototype.close = function () {
   this.setHosts([]);
 };
 ConnectionPool.prototype.empty = ConnectionPool.prototype.close;
-},{"./connectors":199,"./log":202,"./selectors":207,"./utils":212,"__browserify_process":13}],198:[function(require,module,exports){
+},{"./connectors":199,"./log":202,"./selectors":207,"./utils":213,"__browserify_process":13}],198:[function(require,module,exports){
 var Buffer=require("__browserify_Buffer").Buffer;/**
  * Connection that registers a module with angular, using angular's $http service
  * to communicate with ES.
@@ -30342,8 +30341,8 @@ function AngularConnector(host, config) {
   ConnectionAbstract.call(this, host, config);
   this.defer = config.defer;
   this.$http = config.$http;
-  if(this.host.auth) {
-    this.$http.defaults.headers.common.Authorization = 'Basic ' + Buffer(this.host.auth, 'utf8').toString('base64');
+  if (this.host.auth) {
+    this.$http.defaults.headers.common.Authorization = 'Basic ' + (new Buffer(this.host.auth, 'utf8')).toString('base64');
   }
 }
 _.inherits(AngularConnector, ConnectionAbstract);
@@ -30355,6 +30354,7 @@ AngularConnector.prototype.request = function (params, cb) {
     url: this.host.makeUrl(params),
     data: params.body,
     cache: false,
+    headers: this.host.getHeaders(params.headers),
     transformRequest: [],
     transformResponse: []
   }).then(function (response) {
@@ -30372,7 +30372,7 @@ AngularConnector.prototype.request = function (params, cb) {
   };
 };
 
-},{"../connection":196,"../errors":200,"../utils":212,"__browserify_Buffer":12}],199:[function(require,module,exports){
+},{"../connection":196,"../errors":200,"../utils":213,"__browserify_Buffer":12}],199:[function(require,module,exports){
 var opts = {
   xhr: require('./xhr'),
   jquery: require('./jquery'),
@@ -30398,7 +30398,7 @@ if (opts.xhr) {
 
 module.exports = opts;
 
-},{"../utils":212,"./angular":198,"./jquery":1,"./xhr":1}],200:[function(require,module,exports){
+},{"../utils":213,"./angular":198,"./jquery":1,"./xhr":1}],200:[function(require,module,exports){
 var process=require("__browserify_process");var _ = require('./utils');
 var errors = module.exports;
 
@@ -30525,7 +30525,7 @@ _.each(statusCodes, function (name, status) {
   errors[status] = StatusCodeError;
 });
 
-},{"./utils":212,"__browserify_process":13}],201:[function(require,module,exports){
+},{"./utils":213,"__browserify_process":13}],201:[function(require,module,exports){
 /**
  * Class to wrap URLS, formatting them and maintaining their separate details
  * @type {[type]}
@@ -30561,6 +30561,7 @@ function Host(config) {
   this.port = 9200;
   this.auth = null;
   this.query = null;
+  this.headers = null;
 
   if (typeof config === 'string') {
     if (!startsWithProtocolRE.test(config)) {
@@ -30645,16 +30646,7 @@ Host.prototype.makeUrl = function (params) {
   }
 
   // build the query string
-  var query = '';
-  if (params.query) {
-    // if the user passed in a query, merge it with the defaults from the host
-    query = qs.stringify(
-      _.defaults(typeof params.query === 'string' ? qs.parse(params.query) : params.query, this.query)
-    );
-  } else if (this.query) {
-    // just stringify the hosts query
-    query = qs.stringify(this.query);
-  }
+  var query = qs.stringify(this.getQuery(params.query));
 
   var auth = '';
   if (params.auth) {
@@ -30670,11 +30662,35 @@ Host.prototype.makeUrl = function (params) {
   }
 };
 
+function objectPropertyGetter(prop, preOverride) {
+  return function (overrides) {
+    if (preOverride) {
+      overrides = preOverride(overrides);
+    }
+
+    var obj = this[prop];
+    if (!obj && !overrides) {
+      return null;
+    }
+
+    if (overrides) {
+      obj = _.assign({}, obj, overrides);
+    }
+
+    return _.size(obj) ? obj : null;
+  };
+}
+
+Host.prototype.getHeaders = objectPropertyGetter('headers');
+Host.prototype.getQuery = objectPropertyGetter('query', function (query) {
+  return typeof query === 'string' ? qs.parse(query) : query;
+});
+
 Host.prototype.toString = function () {
   return this.makeUrl();
 };
 
-},{"./utils":212,"querystring":6,"url":7}],202:[function(require,module,exports){
+},{"./utils":213,"querystring":6,"url":7}],202:[function(require,module,exports){
 var process=require("__browserify_process");var _ = require('./utils');
 var url = require('url');
 var EventEmitter = require('events').EventEmitter;
@@ -30976,7 +30992,7 @@ Log.normalizeTraceArgs = function (method, requestUrl, body, responseBody, respo
 
 module.exports = Log;
 
-},{"./loggers":204,"./utils":212,"__browserify_process":13,"events":4,"url":7}],203:[function(require,module,exports){
+},{"./loggers":204,"./utils":213,"__browserify_process":13,"events":4,"url":7}],203:[function(require,module,exports){
 var _ = require('./utils');
 
 /**
@@ -31147,7 +31163,7 @@ LoggerAbstract.prototype._formatTraceMessage = function (req) {
 
 LoggerAbstract.prototype._prettyJson = function (body) {
   try {
-    if (typeof object === 'string') {
+    if (typeof body === 'string') {
       body = JSON.parse(body);
     }
     return JSON.stringify(body, null, '  ').replace(/'/g, '\\u0027');
@@ -31158,7 +31174,7 @@ LoggerAbstract.prototype._prettyJson = function (body) {
 
 module.exports = LoggerAbstract;
 
-},{"./utils":212}],204:[function(require,module,exports){
+},{"./utils":213}],204:[function(require,module,exports){
 module.exports = {
   console: require('./console')
 };
@@ -31264,7 +31280,7 @@ Console.prototype.onTrace = _.handler(function (msg) {
   this.write('TRACE', this._formatTraceMessage(msg), 'log');
 });
 
-},{"../logger":203,"../utils":212}],206:[function(require,module,exports){
+},{"../logger":203,"../utils":213}],206:[function(require,module,exports){
 var _ = require('./utils');
 var extractHostPartsRE = /\[\/*([^:]+):(\d+)\]/;
 
@@ -31298,7 +31314,7 @@ function makeNodeParser(hostProp) {
 module.exports = makeNodeParser('http_address');
 module.exports.thrift = makeNodeParser('transport_address');
 
-},{"./utils":212}],207:[function(require,module,exports){
+},{"./utils":213}],207:[function(require,module,exports){
 module.exports = {
   random: require('./random'),
   roundRobin: require('./round_robin')
@@ -31393,7 +31409,7 @@ Json.prototype.bulkBody = function (val) {
   return body;
 };
 
-},{"../utils":212}],211:[function(require,module,exports){
+},{"../utils":213}],211:[function(require,module,exports){
 /**
  * Class that manages making request, called by all of the API methods.
  * @type {[type]}
@@ -31404,6 +31420,7 @@ var _ = require('./utils');
 var errors = require('./errors');
 var Host = require('./host');
 var Promise = require('bluebird');
+var patchSniffOnConnectionFault = require('./transport/sniff_on_connection_fault');
 
 function Transport(config) {
   var self = this;
@@ -31476,7 +31493,9 @@ function Transport(config) {
     }, config.sniffInterval);
   }
 
-  this.sniffAfterConnectionFault = config.sniffAfterConnectionFault;
+  if (config.sniffOnConnectionFault) {
+    patchSniffOnConnectionFault(this);
+  }
 }
 
 Transport.connectionPools = {
@@ -31512,7 +31531,6 @@ Transport.prototype.defer = function () {
  * @param {Function} cb - A function to call back with (error, responseBody, responseStatus)
  */
 Transport.prototype.request = function (params, cb) {
-
   var self = this;
   var remainingRetries = this.maxRetries;
   var requestTimeout = this.requestTimeout;
@@ -31763,8 +31781,67 @@ Transport.prototype.close = function () {
   _.each(this._timers, clearTimeout);
   this.connectionPool.close();
 };
+},{"./connection_pool":197,"./errors":200,"./host":201,"./log":202,"./nodes_to_host":206,"./serializers/json":210,"./transport/sniff_on_connection_fault":212,"./utils":213,"bluebird":1}],212:[function(require,module,exports){
+var _ = require('../utils');
 
-},{"./connection_pool":197,"./errors":200,"./host":201,"./log":202,"./nodes_to_host":206,"./serializers/json":210,"./utils":212,"bluebird":1}],212:[function(require,module,exports){
+
+/**
+ * Patch the transport's connection pool to schedule a sniff after a connection fails.
+ * When a connection fails for the first time it will schedule a sniff 1 second in the
+ * future, and increase the timeout based on the deadTimeout algorithm chosen by the
+ * connectionPool, and the number of times the sniff has failed.
+ *
+ * @param  {Transport} transport - the transport that will be using this behavior
+ * @return {undefined}
+ */
+module.exports = function setupSniffOnConnectionFault(transport) {
+  var failures = 0;
+  var pool = transport.connectionPool;
+  var originalOnDied = pool._onConnectionDied;
+
+  // do the actual sniff, if the sniff is unable to
+  // connect to a node this function will be called again by the connectionPool
+  var work = function () {
+    work.timerId = transport._timeout(work.timerId);
+    transport.sniff();
+  };
+
+  // create a function that will count down to a
+  // point n milliseconds into the future
+  var countdownTo = function (ms) {
+    var start = _.now();
+    return function () {
+      return start - ms;
+    };
+  };
+
+  // overwrite the function, but still call it
+  pool._onConnectionDied = function (connection, wasAlreadyDead) {
+    var ret = originalOnDied.call(pool, connection, wasAlreadyDead);
+
+    // clear the failures if this is the first failure we have seen
+    failures = work.timerId ? failures + 1 : 0;
+
+    var ms = pool.calcDeadTimeout(failures, 1000);
+
+    if (work.timerId && ms < work.timerId && work.countdown()) {
+      // clear the timer
+      work.timerId = transport._timeout(work.timerId);
+    }
+
+    if (!work.timerId) {
+      work.timerId = transport._timeout(work, ms);
+      work.countdown = countdownTo(ms);
+    }
+
+    return ret;
+  };
+
+  pool._onConnectionDied.restore = function () {
+    pool._onConnectionDied = originalOnDied;
+  };
+};
+},{"../utils":213}],213:[function(require,module,exports){
 var process=require("__browserify_process"),Buffer=require("__browserify_Buffer").Buffer;var path = require('path');
 var _ = require('lodash-node/modern');
 var nodeUtils = require('util');
@@ -32183,6 +32260,13 @@ _.getUnwrittenFromStream = function (stream) {
     }
     return out;
   }
+};
+
+/**
+ * return the current time in milliseconds since epoch
+ */
+_.now = function () {
+  return (typeof Date.now === 'function') ? Date.now() : (new Date()).getTime();
 };
 
 module.exports = utils;
