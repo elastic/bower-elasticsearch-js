@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.1.1 - 2014-04-01
+/*! elasticsearch - v2.1.2 - 2014-04-08
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -27,37 +27,36 @@
 "use strict";
 module.exports = function(Promise, Promise$_CreatePromiseArray, PromiseArray) {
 
-    var SomePromiseArray = require("./some_promise_array.js")(PromiseArray);
-    function Promise$_Any(promises, useBound, caller) {
-        var ret = Promise$_CreatePromiseArray(
-            promises,
-            SomePromiseArray,
-            caller,
-            useBound === true && promises._isBound()
-                ? promises._boundTo
-                : void 0
-       );
-        var promise = ret.promise();
-        if (promise.isRejected()) {
-            return promise;
-        }
-        ret.setHowMany(1);
-        ret.setUnwrap();
-        ret.init();
+var SomePromiseArray = require("./some_promise_array.js")(PromiseArray);
+function Promise$_Any(promises, useBound) {
+    var ret = Promise$_CreatePromiseArray(
+        promises,
+        SomePromiseArray,
+        useBound === true && promises._isBound()
+            ? promises._boundTo
+            : void 0
+   );
+    var promise = ret.promise();
+    if (promise.isRejected()) {
         return promise;
     }
+    ret.setHowMany(1);
+    ret.setUnwrap();
+    ret.init();
+    return promise;
+}
 
-    Promise.any = function Promise$Any(promises) {
-        return Promise$_Any(promises, false, Promise.any);
-    };
+Promise.any = function Promise$Any(promises) {
+    return Promise$_Any(promises, false);
+};
 
-    Promise.prototype.any = function Promise$any() {
-        return Promise$_Any(this, true, this.any);
-    };
+Promise.prototype.any = function Promise$any() {
+    return Promise$_Any(this, true);
+};
 
 };
 
-},{"./some_promise_array.js":34}],2:[function(require,module,exports){
+},{"./some_promise_array.js":33}],2:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -170,7 +169,7 @@ Async.prototype._reset = function Async$_reset() {
 
 module.exports = new Async();
 
-},{"./global.js":15,"./queue.js":27,"./schedule.js":30,"./util.js":38}],3:[function(require,module,exports){
+},{"./global.js":15,"./queue.js":26,"./schedule.js":29,"./util.js":37}],3:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -221,36 +220,34 @@ module.exports = Promise;
  */
 "use strict";
 module.exports = function(Promise) {
-    Promise.prototype.call = function Promise$call(propertyName) {
-        var $_len = arguments.length;var args = new Array($_len - 1); for(var $_i = 1; $_i < $_len; ++$_i) {args[$_i - 1] = arguments[$_i];}
+Promise.prototype.call = function Promise$call(propertyName) {
+    var $_len = arguments.length;var args = new Array($_len - 1); for(var $_i = 1; $_i < $_len; ++$_i) {args[$_i - 1] = arguments[$_i];}
 
-        return this._then(function(obj) {
-                return obj[propertyName].apply(obj, args);
-            },
-            void 0,
-            void 0,
-            void 0,
-            void 0,
-            this.call
-       );
-    };
+    return this._then(function(obj) {
+            return obj[propertyName].apply(obj, args);
+        },
+        void 0,
+        void 0,
+        void 0,
+        void 0
+   );
+};
 
-    function Promise$getter(obj) {
-        var prop = typeof this === "string"
-            ? this
-            : ("" + this);
-        return obj[prop];
-    }
-    Promise.prototype.get = function Promise$get(propertyName) {
-        return this._then(
-            Promise$getter,
-            void 0,
-            void 0,
-            propertyName,
-            void 0,
-            this.get
-       );
-    };
+function Promise$getter(obj) {
+    var prop = typeof this === "string"
+        ? this
+        : ("" + this);
+    return obj[prop];
+}
+Promise.prototype.get = function Promise$get(propertyName) {
+    return this._then(
+        Promise$getter,
+        void 0,
+        void 0,
+        propertyName,
+        void 0
+   );
+};
 };
 
 },{}],5:[function(require,module,exports){
@@ -278,58 +275,54 @@ module.exports = function(Promise) {
  */
 "use strict";
 module.exports = function(Promise, INTERNAL) {
-    var errors = require("./errors.js");
-    var async = require("./async.js");
-    var CancellationError = errors.CancellationError;
-    var SYNC_TOKEN = {};
+var errors = require("./errors.js");
+var async = require("./async.js");
+var CancellationError = errors.CancellationError;
 
-    Promise.prototype._cancel = function Promise$_cancel() {
-        if (!this.isCancellable()) return this;
-        var parent;
-        if ((parent = this._cancellationParent) !== void 0) {
-            parent.cancel(SYNC_TOKEN);
-            return;
-        }
-        var err = new CancellationError();
-        this._attachExtraTrace(err);
-        this._rejectUnchecked(err);
-    };
+Promise.prototype._cancel = function Promise$_cancel() {
+    if (!this.isCancellable()) return this;
+    var parent;
+    var promiseToReject = this;
+    while ((parent = promiseToReject._cancellationParent) !== void 0 &&
+        parent.isCancellable()) {
+        promiseToReject = parent;
+    }
+    var err = new CancellationError();
+    promiseToReject._attachExtraTrace(err);
+    promiseToReject._rejectUnchecked(err);
+};
 
-    Promise.prototype.cancel = function Promise$cancel(token) {
-        if (!this.isCancellable()) return this;
-        if (token === SYNC_TOKEN) {
-            this._cancel();
-            return this;
-        }
-        async.invokeLater(this._cancel, this, void 0);
-        return this;
-    };
+Promise.prototype.cancel = function Promise$cancel() {
+    if (!this.isCancellable()) return this;
+    async.invokeLater(this._cancel, this, void 0);
+    return this;
+};
 
-    Promise.prototype.cancellable = function Promise$cancellable() {
-        if (this._cancellable()) return this;
-        this._setCancellable();
-        this._cancellationParent = void 0;
-        return this;
-    };
+Promise.prototype.cancellable = function Promise$cancellable() {
+    if (this._cancellable()) return this;
+    this._setCancellable();
+    this._cancellationParent = void 0;
+    return this;
+};
 
-    Promise.prototype.uncancellable = function Promise$uncancellable() {
-        var ret = new Promise(INTERNAL);
-        ret._setTrace(this.uncancellable, this);
-        ret._follow(this);
-        ret._unsetCancellable();
-        if (this._isBound()) ret._setBoundTo(this._boundTo);
-        return ret;
-    };
+Promise.prototype.uncancellable = function Promise$uncancellable() {
+    var ret = new Promise(INTERNAL);
+    ret._setTrace(this);
+    ret._follow(this);
+    ret._unsetCancellable();
+    if (this._isBound()) ret._setBoundTo(this._boundTo);
+    return ret;
+};
 
-    Promise.prototype.fork =
-    function Promise$fork(didFulfill, didReject, didProgress) {
-        var ret = this._then(didFulfill, didReject, didProgress,
-            void 0, void 0, this.fork);
+Promise.prototype.fork =
+function Promise$fork(didFulfill, didReject, didProgress) {
+    var ret = this._then(didFulfill, didReject, didProgress,
+                         void 0, void 0);
 
-        ret._setCancellable();
-        ret._cancellationParent = void 0;
-        return ret;
-    };
+    ret._setCancellable();
+    ret._cancellationParent = void 0;
+    return ret;
+};
 };
 
 },{"./async.js":2,"./errors.js":9}],6:[function(require,module,exports){
@@ -361,7 +354,7 @@ var inherits = require("./util.js").inherits;
 var defineProperty = require("./es5.js").defineProperty;
 
 var rignore = new RegExp(
-    "\\b(?:[\\w.]*Promise(?:Array|Spawn)?\\$_\\w+|" +
+    "\\b(?:[a-zA-Z0-9.]+\\$_\\w+|" +
     "tryCatch(?:1|2|Apply)|new \\w*PromiseArray|" +
     "\\w*PromiseArray\\.\\w*PromiseArray|" +
     "setTimeout|CatchFilter\\$_\\w+|makeNodePromisified|processImmediate|" +
@@ -370,7 +363,6 @@ var rignore = new RegExp(
 
 var rtraceline = null;
 var formatStack = null;
-var areNamesMangled = false;
 
 function formatNonError(obj) {
     var str;
@@ -407,9 +399,7 @@ function snip(str) {
 }
 
 function CapturedTrace(ignoreUntil, isTopLevel) {
-    if (!areNamesMangled) {
-    }
-    this.captureStackTrace(ignoreUntil, isTopLevel);
+    this.captureStackTrace(CapturedTrace, isTopLevel);
 
 }
 inherits(CapturedTrace, Error);
@@ -435,14 +425,11 @@ function CapturedTrace$PossiblyUnhandledRejection(reason) {
             console.error(message);
         }
         else if (typeof console.log === "function" ||
-            typeof console.error === "object") {
+            typeof console.log === "object") {
             console.log(message);
         }
     }
 };
-
-areNamesMangled = CapturedTrace.prototype.captureStackTrace.name !==
-    "CapturedTrace$captureStackTrace";
 
 CapturedTrace.combine = function CapturedTrace$Combine(current, prev) {
     var curLast = current.length - 1;
@@ -461,7 +448,6 @@ CapturedTrace.combine = function CapturedTrace$Combine(current, prev) {
     var lines = current.concat(prev);
 
     var ret = [];
-
 
     for (var i = 0, len = lines.length; i < len; ++i) {
 
@@ -503,7 +489,7 @@ var captureStackTrace = (function stackDetection() {
     }
     var err = new Error();
 
-    if (!areNamesMangled && typeof err.stack === "string" &&
+    if (typeof err.stack === "string" &&
         typeof "".startsWith === "function" &&
         (err.stack.startsWith("stackDetection@")) &&
         stackDetection.name === "stackDetection") {
@@ -529,20 +515,12 @@ var captureStackTrace = (function stackDetection() {
             return formatNonError(error);
         };
 
-        return function captureStackTrace(o, fn) {
-            var name = fn.name;
+        return function captureStackTrace(o) {
             var stack = new Error().stack;
             var split = stack.split(rline);
-            var i, len = split.length;
-            for (i = 0; i < len; i += 2) {
-                if (split[i] === name) {
-                    break;
-                }
-            }
-            split = split.slice(i + 2);
-            len = split.length - 2;
+            var len = split.length;
             var ret = "";
-            for (i = 0; i < len; i += 2) {
+            for (var i = 0; i < len; i += 2) {
                 ret += split[i];
                 ret += "@";
                 ret += split[i + 1];
@@ -571,7 +549,7 @@ var captureStackTrace = (function stackDetection() {
 return CapturedTrace;
 };
 
-},{"./es5.js":11,"./util.js":38}],7:[function(require,module,exports){
+},{"./es5.js":11,"./util.js":37}],7:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -601,6 +579,7 @@ var errors = require("./errors.js");
 var tryCatch1 = util.tryCatch1;
 var errorObj = util.errorObj;
 var keys = require("./es5.js").keys;
+var TypeError = errors.TypeError;
 
 function CatchFilter(instances, callback, promise) {
     this._instances = instances;
@@ -666,7 +645,7 @@ CatchFilter.prototype.doFilter = function CatchFilter$_doFilter(e) {
 return CatchFilter;
 };
 
-},{"./errors.js":9,"./es5.js":11,"./util.js":38}],8:[function(require,module,exports){
+},{"./errors.js":9,"./es5.js":11,"./util.js":37}],8:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -725,12 +704,10 @@ function Promise$thenReturn(value) {
             void 0,
             void 0,
             void 0,
-            void 0,
-            this.thenReturn
+            void 0
        );
     }
-    return this._then(returner, void 0, void 0,
-                        value, void 0, this.thenReturn);
+    return this._then(returner, void 0, void 0, value, void 0);
 };
 
 Promise.prototype["throw"] =
@@ -742,16 +719,14 @@ function Promise$thenThrow(reason) {
             void 0,
             void 0,
             void 0,
-            void 0,
-            this.thenThrow
+            void 0
        );
     }
-    return this._then(thrower, void 0, void 0,
-                        reason, void 0, this.thenThrow);
+    return this._then(thrower, void 0, void 0, reason, void 0);
 };
 };
 
-},{"./util.js":38}],9:[function(require,module,exports){
+},{"./util.js":37}],9:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -867,7 +842,7 @@ module.exports = {
     canAttach: canAttach
 };
 
-},{"./es5.js":11,"./global.js":15,"./util.js":38}],10:[function(require,module,exports){
+},{"./es5.js":11,"./global.js":15,"./util.js":37}],10:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1023,37 +998,35 @@ else {
  */
 "use strict";
 module.exports = function(Promise) {
-    var isArray = require("./util.js").isArray;
+var isArray = require("./util.js").isArray;
 
-    function Promise$_filter(booleans) {
-        var values = this._settledValue;
-        var len = values.length;
-        var ret = new Array(len);
-        var j = 0;
+function Promise$_filter(booleans) {
+    var values = this instanceof Promise ? this._settledValue : this;
+    var len = values.length;
+    var ret = new Array(len);
+    var j = 0;
 
-        for (var i = 0; i < len; ++i) {
-            if (booleans[i]) ret[j++] = values[i];
+    for (var i = 0; i < len; ++i) {
+        if (booleans[i]) ret[j++] = values[i];
 
-        }
-        ret.length = j;
-        return ret;
     }
+    ret.length = j;
+    return ret;
+}
 
-    var ref = {ref: null};
-    Promise.filter = function Promise$Filter(promises, fn) {
-        return Promise.map(promises, fn, ref)
-            ._then(Promise$_filter, void 0, void 0,
-                    ref.ref, void 0, Promise.filter);
-    };
-
-    Promise.prototype.filter = function Promise$filter(fn) {
-        return this.map(fn, ref)
-            ._then(Promise$_filter, void 0, void 0,
-                    ref.ref, void 0, this.filter);
-    };
+var ref = {ref: null};
+Promise.filter = function Promise$Filter(promises, fn) {
+    return Promise.map(promises, fn, ref)
+                  ._then(Promise$_filter, void 0, void 0, ref.ref, void 0);
 };
 
-},{"./util.js":38}],13:[function(require,module,exports){
+Promise.prototype.filter = function Promise$filter(fn) {
+    return this.map(fn, ref)
+               ._then(Promise$_filter, void 0, void 0, ref.ref, void 0);
+};
+};
+
+},{"./util.js":37}],13:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1078,116 +1051,107 @@ module.exports = function(Promise) {
  */
 "use strict";
 module.exports = function(Promise, NEXT_FILTER) {
-    var util = require("./util.js");
-    var wrapsPrimitiveReceiver = util.wrapsPrimitiveReceiver;
-    var isPrimitive = util.isPrimitive;
-    var thrower = util.thrower;
+var util = require("./util.js");
+var wrapsPrimitiveReceiver = util.wrapsPrimitiveReceiver;
+var isPrimitive = util.isPrimitive;
+var thrower = util.thrower;
 
 
-    function returnThis() {
-        return this;
+function returnThis() {
+    return this;
+}
+function throwThis() {
+    throw this;
+}
+function return$(r) {
+    return function Promise$_returner() {
+        return r;
+    };
+}
+function throw$(r) {
+    return function Promise$_thrower() {
+        throw r;
+    };
+}
+function promisedFinally(ret, reasonOrValue, isFulfilled) {
+    var then;
+    if (wrapsPrimitiveReceiver && isPrimitive(reasonOrValue)) {
+        then = isFulfilled ? return$(reasonOrValue) : throw$(reasonOrValue);
     }
-    function throwThis() {
-        throw this;
+    else {
+        then = isFulfilled ? returnThis : throwThis;
     }
-    function makeReturner(r) {
-        return function Promise$_returner() {
-            return r;
-        };
-    }
-    function makeThrower(r) {
-        return function Promise$_thrower() {
-            throw r;
-        };
-    }
-    function promisedFinally(ret, reasonOrValue, isFulfilled) {
-        var useConstantFunction =
-                        wrapsPrimitiveReceiver && isPrimitive(reasonOrValue);
+    return ret._then(then, thrower, void 0, reasonOrValue, void 0);
+}
 
-        if (isFulfilled) {
-            return ret._then(
-                useConstantFunction
-                    ? returnThis
-                    : makeReturner(reasonOrValue),
-                thrower, void 0, reasonOrValue, void 0, promisedFinally);
-        }
-        else {
-            return ret._then(
-                useConstantFunction
-                    ? throwThis
-                    : makeThrower(reasonOrValue),
-                thrower, void 0, reasonOrValue, void 0, promisedFinally);
-        }
-    }
+function finallyHandler(reasonOrValue) {
+    var promise = this.promise;
+    var handler = this.handler;
 
-    function finallyHandler(reasonOrValue) {
-        var promise = this.promise;
-        var handler = this.handler;
+    var ret = promise._isBound()
+                    ? handler.call(promise._boundTo)
+                    : handler();
 
-        var ret = promise._isBound()
-                        ? handler.call(promise._boundTo)
-                        : handler();
-
-        if (ret !== void 0) {
-            var maybePromise = Promise._cast(ret, finallyHandler, void 0);
-            if (maybePromise instanceof Promise) {
-                return promisedFinally(maybePromise, reasonOrValue,
-                                        promise.isFulfilled());
-            }
-        }
-
-        if (promise.isRejected()) {
-            NEXT_FILTER.e = reasonOrValue;
-            return NEXT_FILTER;
-        }
-        else {
-            return reasonOrValue;
+    if (ret !== void 0) {
+        var maybePromise = Promise._cast(ret, void 0);
+        if (maybePromise instanceof Promise) {
+            return promisedFinally(maybePromise, reasonOrValue,
+                                    promise.isFulfilled());
         }
     }
 
-    function tapHandler(value) {
-        var promise = this.promise;
-        var handler = this.handler;
-
-        var ret = promise._isBound()
-                        ? handler.call(promise._boundTo, value)
-                        : handler(value);
-
-        if (ret !== void 0) {
-            var maybePromise = Promise._cast(ret, tapHandler, void 0);
-            if (maybePromise instanceof Promise) {
-                return promisedFinally(maybePromise, value, true);
-            }
-        }
-        return value;
+    if (promise.isRejected()) {
+        NEXT_FILTER.e = reasonOrValue;
+        return NEXT_FILTER;
     }
+    else {
+        return reasonOrValue;
+    }
+}
 
-    Promise.prototype._passThroughHandler =
-    function Promise$_passThroughHandler(handler, isFinally, caller) {
-        if (typeof handler !== "function") return this.then();
+function tapHandler(value) {
+    var promise = this.promise;
+    var handler = this.handler;
 
-        var promiseAndHandler = {
-            promise: this,
-            handler: handler
-        };
+    var ret = promise._isBound()
+                    ? handler.call(promise._boundTo, value)
+                    : handler(value);
 
-        return this._then(
-                isFinally ? finallyHandler : tapHandler,
-                isFinally ? finallyHandler : void 0, void 0,
-                promiseAndHandler, void 0, caller);
+    if (ret !== void 0) {
+        var maybePromise = Promise._cast(ret, void 0);
+        if (maybePromise instanceof Promise) {
+            return promisedFinally(maybePromise, value, true);
+        }
+    }
+    return value;
+}
+
+Promise.prototype._passThroughHandler =
+function Promise$_passThroughHandler(handler, isFinally) {
+    if (typeof handler !== "function") return this.then();
+
+    var promiseAndHandler = {
+        promise: this,
+        handler: handler
     };
 
-    Promise.prototype.lastly =
-    Promise.prototype["finally"] = function Promise$finally(handler) {
-        return this._passThroughHandler(handler, true, this.lastly);
-    };
-
-    Promise.prototype.tap = function Promise$tap(handler) {
-        return this._passThroughHandler(handler, false, this.tap);
-    };
+    return this._then(
+            isFinally ? finallyHandler : tapHandler,
+            isFinally ? finallyHandler : void 0, void 0,
+            promiseAndHandler, void 0);
 };
 
-},{"./util.js":38}],14:[function(require,module,exports){
+Promise.prototype.lastly =
+Promise.prototype["finally"] = function Promise$finally(handler) {
+    return this._passThroughHandler(handler, true);
+};
+
+Promise.prototype.tap = function Promise$tap(handler) {
+    return this._passThroughHandler(handler, false);
+};
+};
+
+},{"./util.js":37}],14:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1212,40 +1176,40 @@ module.exports = function(Promise, NEXT_FILTER) {
  */
 "use strict";
 module.exports = function(Promise, apiRejection, INTERNAL) {
-    var PromiseSpawn = require("./promise_spawn.js")(Promise, INTERNAL);
-    var errors = require("./errors.js");
-    var TypeError = errors.TypeError;
-    var deprecated = require("./util.js").deprecated;
+var PromiseSpawn = require("./promise_spawn.js")(Promise, INTERNAL);
+var errors = require("./errors.js");
+var TypeError = errors.TypeError;
+var deprecated = require("./util.js").deprecated;
 
-    Promise.coroutine = function Promise$Coroutine(generatorFunction) {
-        if (typeof generatorFunction !== "function") {
-            throw new TypeError("generatorFunction must be a function");
-        }
-        var PromiseSpawn$ = PromiseSpawn;
-        return function anonymous() {
-            var generator = generatorFunction.apply(this, arguments);
-            var spawn = new PromiseSpawn$(void 0, void 0, anonymous);
-            spawn._generator = generator;
-            spawn._next(void 0);
-            return spawn.promise();
-        };
-    };
-
-    Promise.coroutine.addYieldHandler = PromiseSpawn.addYieldHandler;
-
-    Promise.spawn = function Promise$Spawn(generatorFunction) {
-        deprecated("Promise.spawn is deprecated. Use Promise.coroutine instead.");
-        if (typeof generatorFunction !== "function") {
-            return apiRejection("generatorFunction must be a function");
-        }
-        var spawn = new PromiseSpawn(generatorFunction, this, Promise.spawn);
-        var ret = spawn.promise();
-        spawn._run(Promise.spawn);
-        return ret;
+Promise.coroutine = function Promise$Coroutine(generatorFunction) {
+    if (typeof generatorFunction !== "function") {
+        throw new TypeError("generatorFunction must be a function");
+    }
+    var PromiseSpawn$ = PromiseSpawn;
+    return function () {
+        var generator = generatorFunction.apply(this, arguments);
+        var spawn = new PromiseSpawn$(void 0, void 0);
+        spawn._generator = generator;
+        spawn._next(void 0);
+        return spawn.promise();
     };
 };
 
-},{"./errors.js":9,"./promise_spawn.js":23,"./util.js":38}],15:[function(require,module,exports){
+Promise.coroutine.addYieldHandler = PromiseSpawn.addYieldHandler;
+
+Promise.spawn = function Promise$Spawn(generatorFunction) {
+    deprecated("Promise.spawn is deprecated. Use Promise.coroutine instead.");
+    if (typeof generatorFunction !== "function") {
+        return apiRejection("generatorFunction must be a function");
+    }
+    var spawn = new PromiseSpawn(generatorFunction, this);
+    var ret = spawn.promise();
+    spawn._run(Promise.spawn);
+    return ret;
+};
+};
+
+},{"./errors.js":9,"./promise_spawn.js":22,"./util.js":37}],15:[function(require,module,exports){
 var process=require("__browserify_process"),global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1270,26 +1234,26 @@ var process=require("__browserify_process"),global=typeof self !== "undefined" ?
  */
 "use strict";
 module.exports = (function(){
-    if (typeof this !== "undefined") {
-        return this;
-    }
-    if (typeof process !== "undefined" &&
-        typeof global !== "undefined" &&
-        typeof process.execPath === "string") {
-        return global;
-    }
-    if (typeof window !== "undefined" &&
-        typeof document !== "undefined" &&
-        typeof navigator !== "undefined" && navigator !== null &&
-        typeof navigator.appName === "string") {
-            if(window.wrappedJSObject !== undefined){
-                return window.wrappedJSObject;
-            }
-        return window;
-    }
+if (typeof this !== "undefined") {
+    return this;
+}
+if (typeof process !== "undefined" &&
+    typeof global !== "undefined" &&
+    typeof process.execPath === "string") {
+    return global;
+}
+if (typeof window !== "undefined" &&
+    typeof document !== "undefined" &&
+    typeof navigator !== "undefined" && navigator !== null &&
+    typeof navigator.appName === "string") {
+        if(window.wrappedJSObject !== undefined){
+            return window.wrappedJSObject;
+        }
+    return window;
+}
 })();
 
-},{"__browserify_process":51}],16:[function(require,module,exports){
+},{"__browserify_process":50}],16:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1313,112 +1277,161 @@ module.exports = (function(){
  * 
  */
 "use strict";
-module.exports = function(
-    Promise, Promise$_CreatePromiseArray, PromiseArray, apiRejection) {
+module.exports = function(Promise, PromiseArray, INTERNAL, apiRejection) {
 
-    function Promise$_mapper(values) {
-        var fn = this;
-        var receiver = void 0;
+var all = Promise.all;
+var util = require("./util.js");
+var canAttach = require("./errors.js").canAttach;
+var isArray = util.isArray;
+var _cast = Promise._cast;
 
-        if (typeof fn !== "function")  {
-            receiver = fn.receiver;
-            fn = fn.fn;
+function unpack(values) {
+    return Promise$_Map(values, this[0], this[1], this[2]);
+}
+
+function Promise$_Map(promises, fn, useBound, ref) {
+    if (typeof fn !== "function") {
+        return apiRejection("fn must be a function");
+    }
+
+    var receiver = void 0;
+    if (useBound === true) {
+        if (promises._isBound()) {
+            receiver = promises._boundTo;
         }
-        var shouldDefer = false;
+    }
+    else if (useBound !== false) {
+        receiver = useBound;
+    }
 
-        var ret = new Array(values.length);
+    var shouldUnwrapItems = ref !== void 0;
+    if (shouldUnwrapItems) ref.ref = promises;
 
-        if (receiver === void 0) {
-            for (var i = 0, len = values.length; i < len; ++i) {
-                var value = fn(values[i], i, len);
-                if (!shouldDefer) {
-                    var maybePromise = Promise._cast(value,
-                            Promise$_mapper, void 0);
-                    if (maybePromise instanceof Promise) {
-                        if (maybePromise.isFulfilled()) {
-                            ret[i] = maybePromise._settledValue;
-                            continue;
-                        }
-                        else {
-                            shouldDefer = true;
-                        }
-                        value = maybePromise;
-                    }
+    if (promises instanceof Promise) {
+        var pack = [fn, receiver, ref];
+        return promises._then(unpack, void 0, void 0, pack, void 0);
+    }
+    else if (!isArray(promises)) {
+        return apiRejection("expecting an array, a promise or a thenable");
+    }
+
+    var promise = new Promise(INTERNAL);
+    if (receiver !== void 0) promise._setBoundTo(receiver);
+    promise._setTrace(void 0);
+
+    var mapping = new Mapping(promise,
+                                fn,
+                                promises,
+                                receiver,
+                                shouldUnwrapItems);
+    mapping.init();
+    return promise;
+}
+
+var pending = {};
+function Mapping(promise, callback, items, receiver, shouldUnwrapItems) {
+    this.shouldUnwrapItems = shouldUnwrapItems;
+    this.index = 0;
+    this.items = items;
+    this.callback = callback;
+    this.receiver = receiver;
+    this.promise = promise;
+    this.result = new Array(items.length);
+}
+util.inherits(Mapping, PromiseArray);
+
+Mapping.prototype.init = function Mapping$init() {
+    var items = this.items;
+    var len = items.length;
+    var result = this.result;
+    var isRejected = false;
+    for (var i = 0; i < len; ++i) {
+        var maybePromise = _cast(items[i], void 0);
+        if (maybePromise instanceof Promise) {
+            if (maybePromise.isPending()) {
+                result[i] = pending;
+                maybePromise._proxyPromiseArray(this, i);
+            }
+            else if (maybePromise.isFulfilled()) {
+                result[i] = maybePromise.value();
+            }
+            else {
+                maybePromise._unsetRejectionIsUnhandled();
+                if (!isRejected) {
+                    this.reject(maybePromise.reason());
+                    isRejected = true;
                 }
-                ret[i] = value;
             }
         }
         else {
-            for (var i = 0, len = values.length; i < len; ++i) {
-                var value = fn.call(receiver, values[i], i, len);
-                if (!shouldDefer) {
-                    var maybePromise = Promise._cast(value,
-                            Promise$_mapper, void 0);
-                    if (maybePromise instanceof Promise) {
-                        if (maybePromise.isFulfilled()) {
-                            ret[i] = maybePromise._settledValue;
-                            continue;
-                        }
-                        else {
-                            shouldDefer = true;
-                        }
-                        value = maybePromise;
-                    }
-                }
-                ret[i] = value;
-            }
+            result[i] = maybePromise;
         }
-        return shouldDefer
-            ? Promise$_CreatePromiseArray(ret, PromiseArray,
-                Promise$_mapper, void 0).promise()
-            : ret;
     }
-
-    function Promise$_Map(promises, fn, useBound, caller, ref) {
-        if (typeof fn !== "function") {
-            return apiRejection("fn must be a function");
-        }
-
-        if (useBound === true && promises._isBound()) {
-            fn = {
-                fn: fn,
-                receiver: promises._boundTo
-            };
-        }
-
-        var ret = Promise$_CreatePromiseArray(
-            promises,
-            PromiseArray,
-            caller,
-            useBound === true && promises._isBound()
-                ? promises._boundTo
-                : void 0
-       ).promise();
-
-        if (ref !== void 0) {
-            ref.ref = ret;
-        }
-
-        return ret._then(
-            Promise$_mapper,
-            void 0,
-            void 0,
-            fn,
-            void 0,
-            caller
-       );
-    }
-
-    Promise.prototype.map = function Promise$map(fn, ref) {
-        return Promise$_Map(this, fn, true, this.map, ref);
-    };
-
-    Promise.map = function Promise$Map(promises, fn, ref) {
-        return Promise$_Map(promises, fn, false, Promise.map, ref);
-    };
+    if (!isRejected) this.iterate();
 };
 
-},{}],17:[function(require,module,exports){
+Mapping.prototype.isResolved = function Mapping$isResolved() {
+    return this.promise === null;
+};
+
+Mapping.prototype._promiseProgressed =
+function Mapping$_promiseProgressed(value) {
+    if (this.isResolved()) return;
+    this.promise._progress(value);
+};
+
+Mapping.prototype._promiseFulfilled =
+function Mapping$_promiseFulfilled(value, index) {
+    if (this.isResolved()) return;
+    this.result[index] = value;
+    if (this.shouldUnwrapItems) this.items[index] = value;
+    if (this.index === index) this.iterate();
+};
+
+Mapping.prototype._promiseRejected =
+function Mapping$_promiseRejected(reason) {
+    this.reject(reason);
+};
+
+Mapping.prototype.reject = function Mapping$reject(reason) {
+    if (this.isResolved()) return;
+    var trace = canAttach(reason) ? reason : new Error(reason + "");
+    this.promise._attachExtraTrace(trace);
+    this.promise._reject(reason, trace);
+};
+
+Mapping.prototype.iterate = function Mapping$iterate() {
+    var i = this.index;
+    var items = this.items;
+    var result = this.result;
+    var len = items.length;
+    var result = this.result;
+    var receiver = this.receiver;
+    var callback = this.callback;
+
+    for (; i < len; ++i) {
+        var value = result[i];
+        if (value === pending) {
+            this.index = i;
+            return;
+        }
+        try { result[i] = callback.call(receiver, value, i, len); }
+        catch (e) { return this.reject(e); }
+    }
+    this.promise._follow(all(result));
+    this.items = this.result = this.callback = this.promise = null;
+};
+
+Promise.prototype.map = function Promise$map(fn, ref) {
+    return Promise$_Map(this, fn, true, ref);
+};
+
+Promise.map = function Promise$Map(promises, fn, ref) {
+    return Promise$_Map(promises, fn, false, ref);
+};
+};
+
+},{"./errors.js":9,"./util.js":37}],17:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1443,48 +1456,46 @@ module.exports = function(
  */
 "use strict";
 module.exports = function(Promise) {
-    var util = require("./util.js");
-    var async = require("./async.js");
-    var tryCatch2 = util.tryCatch2;
-    var tryCatch1 = util.tryCatch1;
-    var errorObj = util.errorObj;
+var util = require("./util.js");
+var async = require("./async.js");
+var tryCatch2 = util.tryCatch2;
+var tryCatch1 = util.tryCatch1;
+var errorObj = util.errorObj;
 
-    function thrower(r) {
-        throw r;
-    }
+function thrower(r) {
+    throw r;
+}
 
-    function Promise$_successAdapter(val, receiver) {
-        var nodeback = this;
-        var ret = tryCatch2(nodeback, receiver, null, val);
-        if (ret === errorObj) {
-            async.invokeLater(thrower, void 0, ret.e);
-        }
+function Promise$_successAdapter(val, receiver) {
+    var nodeback = this;
+    var ret = tryCatch2(nodeback, receiver, null, val);
+    if (ret === errorObj) {
+        async.invokeLater(thrower, void 0, ret.e);
     }
-    function Promise$_errorAdapter(reason, receiver) {
-        var nodeback = this;
-        var ret = tryCatch1(nodeback, receiver, reason);
-        if (ret === errorObj) {
-            async.invokeLater(thrower, void 0, ret.e);
-        }
+}
+function Promise$_errorAdapter(reason, receiver) {
+    var nodeback = this;
+    var ret = tryCatch1(nodeback, receiver, reason);
+    if (ret === errorObj) {
+        async.invokeLater(thrower, void 0, ret.e);
     }
+}
 
-    Promise.prototype.nodeify = function Promise$nodeify(nodeback) {
-        if (typeof nodeback == "function") {
-            this._then(
-                Promise$_successAdapter,
-                Promise$_errorAdapter,
-                void 0,
-                nodeback,
-                this._isBound() ? this._boundTo : null,
-                this.nodeify
-            );
-            return;
-        }
-        return this;
-    };
+Promise.prototype.nodeify = function Promise$nodeify(nodeback) {
+    if (typeof nodeback == "function") {
+        this._then(
+            Promise$_successAdapter,
+            Promise$_errorAdapter,
+            void 0,
+            nodeback,
+            this._isBound() ? this._boundTo : null
+        );
+    }
+    return this;
+};
 };
 
-},{"./async.js":2,"./util.js":38}],18:[function(require,module,exports){
+},{"./async.js":2,"./util.js":37}],18:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1509,97 +1520,95 @@ module.exports = function(Promise) {
  */
 "use strict";
 module.exports = function(Promise, isPromiseArrayProxy) {
-    var util = require("./util.js");
-    var async = require("./async.js");
-    var errors = require("./errors.js");
-    var tryCatch1 = util.tryCatch1;
-    var errorObj = util.errorObj;
+var util = require("./util.js");
+var async = require("./async.js");
+var errors = require("./errors.js");
+var tryCatch1 = util.tryCatch1;
+var errorObj = util.errorObj;
 
-    Promise.prototype.progressed = function Promise$progressed(handler) {
-        return this._then(void 0, void 0, handler,
-                            void 0, void 0, this.progressed);
-    };
-
-    Promise.prototype._progress = function Promise$_progress(progressValue) {
-        if (this._isFollowingOrFulfilledOrRejected()) return;
-        this._progressUnchecked(progressValue);
-
-    };
-
-    Promise.prototype._progressHandlerAt =
-    function Promise$_progressHandlerAt(index) {
-        if (index === 0) return this._progressHandler0;
-        return this[index + 2 - 5];
-    };
-
-    Promise.prototype._doProgressWith =
-    function Promise$_doProgressWith(progression) {
-        var progressValue = progression.value;
-        var handler = progression.handler;
-        var promise = progression.promise;
-        var receiver = progression.receiver;
-
-        this._pushContext();
-        var ret = tryCatch1(handler, receiver, progressValue);
-        this._popContext();
-
-        if (ret === errorObj) {
-            if (ret.e != null &&
-                ret.e.name !== "StopProgressPropagation") {
-                var trace = errors.canAttach(ret.e)
-                    ? ret.e : new Error(ret.e + "");
-                promise._attachExtraTrace(trace);
-                promise._progress(ret.e);
-            }
-        }
-        else if (Promise.is(ret)) {
-            ret._then(promise._progress, null, null, promise, void 0,
-                this._progress);
-        }
-        else {
-            promise._progress(ret);
-        }
-    };
-
-
-    Promise.prototype._progressUnchecked =
-    function Promise$_progressUnchecked(progressValue) {
-        if (!this.isPending()) return;
-        var len = this._length();
-
-        for (var i = 0; i < len; i += 5) {
-            var handler = this._progressHandlerAt(i);
-            var promise = this._promiseAt(i);
-            if (!Promise.is(promise)) {
-                var receiver = this._receiverAt(i);
-                if (typeof handler === "function") {
-                    handler.call(receiver, progressValue, promise);
-                }
-                else if (Promise.is(receiver) && receiver._isProxied()) {
-                    receiver._progressUnchecked(progressValue);
-                }
-                else if (isPromiseArrayProxy(receiver, promise)) {
-                    receiver._promiseProgressed(progressValue, promise);
-                }
-                continue;
-            }
-
-            if (typeof handler === "function") {
-                async.invoke(this._doProgressWith, this, {
-                    handler: handler,
-                    promise: promise,
-                    receiver: this._receiverAt(i),
-                    value: progressValue
-                });
-            }
-            else {
-                async.invoke(promise._progress, promise, progressValue);
-            }
-        }
-    };
+Promise.prototype.progressed = function Promise$progressed(handler) {
+    return this._then(void 0, void 0, handler, void 0, void 0);
 };
 
-},{"./async.js":2,"./errors.js":9,"./util.js":38}],19:[function(require,module,exports){
+Promise.prototype._progress = function Promise$_progress(progressValue) {
+    if (this._isFollowingOrFulfilledOrRejected()) return;
+    this._progressUnchecked(progressValue);
+
+};
+
+Promise.prototype._progressHandlerAt =
+function Promise$_progressHandlerAt(index) {
+    if (index === 0) return this._progressHandler0;
+    return this[index + 2 - 5];
+};
+
+Promise.prototype._doProgressWith =
+function Promise$_doProgressWith(progression) {
+    var progressValue = progression.value;
+    var handler = progression.handler;
+    var promise = progression.promise;
+    var receiver = progression.receiver;
+
+    this._pushContext();
+    var ret = tryCatch1(handler, receiver, progressValue);
+    this._popContext();
+
+    if (ret === errorObj) {
+        if (ret.e != null &&
+            ret.e.name !== "StopProgressPropagation") {
+            var trace = errors.canAttach(ret.e)
+                ? ret.e : new Error(ret.e + "");
+            promise._attachExtraTrace(trace);
+            promise._progress(ret.e);
+        }
+    }
+    else if (ret instanceof Promise) {
+        ret._then(promise._progress, null, null, promise, void 0);
+    }
+    else {
+        promise._progress(ret);
+    }
+};
+
+
+Promise.prototype._progressUnchecked =
+function Promise$_progressUnchecked(progressValue) {
+    if (!this.isPending()) return;
+    var len = this._length();
+    var progress = this._progress;
+    for (var i = 0; i < len; i += 5) {
+        var handler = this._progressHandlerAt(i);
+        var promise = this._promiseAt(i);
+        if (!(promise instanceof Promise)) {
+            var receiver = this._receiverAt(i);
+            if (typeof handler === "function") {
+                handler.call(receiver, progressValue, promise);
+            }
+            else if (receiver instanceof Promise && receiver._isProxied()) {
+                receiver._progressUnchecked(progressValue);
+            }
+            else if (isPromiseArrayProxy(receiver, promise)) {
+                receiver._promiseProgressed(progressValue, promise);
+            }
+            continue;
+        }
+
+        if (typeof handler === "function") {
+            async.invoke(this._doProgressWith, this, {
+                handler: handler,
+                promise: promise,
+                receiver: this._receiverAt(i),
+                value: progressValue
+            });
+        }
+        else {
+            async.invoke(progress, promise, progressValue);
+        }
+    }
+};
+};
+
+},{"./async.js":2,"./errors.js":9,"./util.js":37}],19:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1691,7 +1700,7 @@ function Promise(resolver) {
 
 Promise.prototype.bind = function Promise$bind(thisArg) {
     var ret = new Promise(INTERNAL);
-    if (debugging) ret._setTrace(this.bind, this);
+    ret._setTrace(this);
     ret._follow(this);
     ret._setBoundTo(thisArg);
     if (this._cancellable()) {
@@ -1730,51 +1739,32 @@ function Promise$catch(fn) {
         catchInstances.length = j;
         fn = arguments[i];
 
-        this._resetTrace(this.caught);
+        this._resetTrace();
         var catchFilter = new CatchFilter(catchInstances, fn, this);
         return this._then(void 0, catchFilter.doFilter, void 0,
-            catchFilter, void 0, this.caught);
+            catchFilter, void 0);
     }
-    return this._then(void 0, fn, void 0, void 0, void 0, this.caught);
+    return this._then(void 0, fn, void 0, void 0, void 0);
 };
 
 Promise.prototype.then =
 function Promise$then(didFulfill, didReject, didProgress) {
     return this._then(didFulfill, didReject, didProgress,
-        void 0, void 0, this.then);
+        void 0, void 0);
 };
 
 
 Promise.prototype.done =
 function Promise$done(didFulfill, didReject, didProgress) {
     var promise = this._then(didFulfill, didReject, didProgress,
-        void 0, void 0, this.done);
+        void 0, void 0);
     promise._setIsFinal();
 };
 
 Promise.prototype.spread = function Promise$spread(didFulfill, didReject) {
     return this._then(didFulfill, didReject, void 0,
-        APPLY, void 0, this.spread);
+        APPLY, void 0);
 };
-
-Promise.prototype.isFulfilled = function Promise$isFulfilled() {
-    return (this._bitField & 268435456) > 0;
-};
-
-
-Promise.prototype.isRejected = function Promise$isRejected() {
-    return (this._bitField & 134217728) > 0;
-};
-
-Promise.prototype.isPending = function Promise$isPending() {
-    return !this.isResolved();
-};
-
-
-Promise.prototype.isResolved = function Promise$isResolved() {
-    return (this._bitField & 402653184) > 0;
-};
-
 
 Promise.prototype.isCancellable = function Promise$isCancellable() {
     return !this.isResolved() &&
@@ -1800,38 +1790,34 @@ Promise.prototype.toJSON = function Promise$toJSON() {
 };
 
 Promise.prototype.all = function Promise$all() {
-    return Promise$_all(this, true, this.all);
+    return Promise$_all(this, true);
 };
 
 
 Promise.is = isPromise;
 
-function Promise$_all(promises, useBound, caller) {
+function Promise$_all(promises, useBound) {
     return Promise$_CreatePromiseArray(
         promises,
         PromiseArray,
-        caller,
         useBound === true && promises._isBound()
             ? promises._boundTo
             : void 0
    ).promise();
 }
 Promise.all = function Promise$All(promises) {
-    return Promise$_all(promises, false, Promise.all);
+    return Promise$_all(promises, false);
 };
 
 Promise.join = function Promise$Join() {
     var $_len = arguments.length;var args = new Array($_len); for(var $_i = 0; $_i < $_len; ++$_i) {args[$_i] = arguments[$_i];}
-    return Promise$_CreatePromiseArray(
-        args, PromiseArray, Promise.join, void 0).promise();
+    return Promise$_CreatePromiseArray(args, PromiseArray, void 0).promise();
 };
 
 Promise.resolve = Promise.fulfilled =
-function Promise$Resolve(value, caller) {
+function Promise$Resolve(value) {
     var ret = new Promise(INTERNAL);
-    if (debugging) ret._setTrace(typeof caller === "function"
-        ? caller
-        : Promise.resolve, void 0);
+    ret._setTrace(void 0);
     if (ret._tryFollow(value)) {
         return ret;
     }
@@ -1843,7 +1829,7 @@ function Promise$Resolve(value, caller) {
 
 Promise.reject = Promise.rejected = function Promise$Reject(reason) {
     var ret = new Promise(INTERNAL);
-    if (debugging) ret._setTrace(Promise.reject, void 0);
+    ret._setTrace(void 0);
     markAsOriginatingFromRejection(reason);
     ret._cleanValues();
     ret._setRejected();
@@ -1861,7 +1847,7 @@ Promise.prototype.error = function Promise$_error(fn) {
 };
 
 Promise.prototype._resolveFromSyncValue =
-function Promise$_resolveFromSyncValue(value, caller) {
+function Promise$_resolveFromSyncValue(value) {
     if (value === errorObj) {
         this._cleanValues();
         this._setRejected();
@@ -1869,7 +1855,7 @@ function Promise$_resolveFromSyncValue(value, caller) {
         this._ensurePossibleRejectionHandled();
     }
     else {
-        var maybePromise = Promise._cast(value, caller, void 0);
+        var maybePromise = Promise._cast(value, void 0);
         if (maybePromise instanceof Promise) {
             this._follow(maybePromise);
         }
@@ -1896,14 +1882,13 @@ Promise.method = function Promise$_Method(fn) {
             value = tryCatchApply(fn, args, this); break;
         }
         var ret = new Promise(INTERNAL);
-        if (debugging) ret._setTrace(Promise$_method, void 0);
-        ret._resolveFromSyncValue(value, Promise$_method);
+        ret._setTrace(void 0);
+        ret._resolveFromSyncValue(value);
         return ret;
     };
 };
 
 Promise.attempt = Promise["try"] = function Promise$_Try(fn, args, ctx) {
-
     if (typeof fn !== "function") {
         return apiRejection("fn must be a function");
     }
@@ -1912,45 +1897,43 @@ Promise.attempt = Promise["try"] = function Promise$_Try(fn, args, ctx) {
         : tryCatch1(fn, ctx, args);
 
     var ret = new Promise(INTERNAL);
-    if (debugging) ret._setTrace(Promise.attempt, void 0);
-    ret._resolveFromSyncValue(value, Promise.attempt);
+    ret._setTrace(void 0);
+    ret._resolveFromSyncValue(value);
     return ret;
 };
 
-Promise.defer = Promise.pending = function Promise$Defer(caller) {
+Promise.defer = Promise.pending = function Promise$Defer() {
     var promise = new Promise(INTERNAL);
-    if (debugging) promise._setTrace(typeof caller === "function"
-                              ? caller : Promise.defer, void 0);
+    promise._setTrace(void 0);
     return new PromiseResolver(promise);
 };
 
 Promise.bind = function Promise$Bind(thisArg) {
     var ret = new Promise(INTERNAL);
-    if (debugging) ret._setTrace(Promise.bind, void 0);
+    ret._setTrace(void 0);
     ret._setFulfilled();
     ret._setBoundTo(thisArg);
     return ret;
 };
 
-Promise.cast = function Promise$_Cast(obj, caller) {
-    if (typeof caller !== "function") {
-        caller = Promise.cast;
-    }
-    var ret = Promise._cast(obj, caller, void 0);
+Promise.cast = function Promise$_Cast(obj) {
+    var ret = Promise._cast(obj, void 0);
     if (!(ret instanceof Promise)) {
-        return Promise.resolve(ret, caller);
+        return Promise.resolve(ret);
     }
     return ret;
 };
 
 Promise.onPossiblyUnhandledRejection =
 function Promise$OnPossiblyUnhandledRejection(fn) {
-    if (typeof fn === "function") {
-        CapturedTrace.possiblyUnhandledRejection = fn;
-    }
-    else {
-        CapturedTrace.possiblyUnhandledRejection = void 0;
-    }
+        CapturedTrace.possiblyUnhandledRejection = typeof fn === "function"
+                                                    ? fn : void 0;
+};
+
+var unhandledRejectionHandled;
+Promise.onUnhandledRejectionHandled =
+function Promise$onUnhandledRejectionHandled(fn) {
+    unhandledRejectionHandled = typeof fn === "function" ? fn : void 0;
 };
 
 var debugging = false || !!(
@@ -1979,7 +1962,7 @@ Promise.prototype._setProxyHandlers =
 function Promise$_setProxyHandlers(receiver, promiseSlotValue) {
     var index = this._length();
 
-    if (index >= 1048575 - 5) {
+    if (index >= 524287 - 5) {
         index = 0;
         this._setLength(0);
     }
@@ -2014,8 +1997,7 @@ function Promise$_then(
     didReject,
     didProgress,
     receiver,
-    internalData,
-    caller
+    internalData
 ) {
     var haveInternalData = internalData !== void 0;
     var ret = haveInternalData ? internalData : new Promise(INTERNAL);
@@ -2023,9 +2005,7 @@ function Promise$_then(
     if (debugging && !haveInternalData) {
         var haveSameContext = this._peekContext() === this._traceParent;
         ret._traceParent = haveSameContext ? this._traceParent : this;
-        ret._setTrace(typeof caller === "function"
-                ? caller
-                : this._then, this);
+        ret._setTrace(this);
     }
 
     if (!haveInternalData && this._isBound()) {
@@ -2048,7 +2028,7 @@ function Promise$_then(
 };
 
 Promise.prototype._length = function Promise$_length() {
-    return this._bitField & 1048575;
+    return this._bitField & 524287;
 };
 
 Promise.prototype._isFollowingOrFulfilledOrRejected =
@@ -2061,8 +2041,8 @@ Promise.prototype._isFollowing = function Promise$_isFollowing() {
 };
 
 Promise.prototype._setLength = function Promise$_setLength(len) {
-    this._bitField = (this._bitField & -1048576) |
-        (len & 1048575);
+    this._bitField = (this._bitField & -524288) |
+        (len & 524287);
 };
 
 Promise.prototype._setFulfilled = function Promise$_setFulfilled() {
@@ -2105,11 +2085,30 @@ function Promise$_setRejectionIsUnhandled() {
 Promise.prototype._unsetRejectionIsUnhandled =
 function Promise$_unsetRejectionIsUnhandled() {
     this._bitField = this._bitField & (~2097152);
+    if (this._isUnhandledRejectionNotified()) {
+        this._unsetUnhandledRejectionIsNotified();
+        this._notifyUnhandledRejectionIsHandled();
+    }
 };
 
 Promise.prototype._isRejectionUnhandled =
 function Promise$_isRejectionUnhandled() {
     return (this._bitField & 2097152) > 0;
+};
+
+Promise.prototype._setUnhandledRejectionIsNotified =
+function Promise$_setUnhandledRejectionIsNotified() {
+    this._bitField = this._bitField | 524288;
+};
+
+Promise.prototype._unsetUnhandledRejectionIsNotified =
+function Promise$_unsetUnhandledRejectionIsNotified() {
+    this._bitField = this._bitField & (~524288);
+};
+
+Promise.prototype._isUnhandledRejectionNotified =
+function Promise$_isUnhandledRejectionNotified() {
+    return (this._bitField & 524288) > 0;
 };
 
 Promise.prototype._setCarriedStackTrace =
@@ -2189,11 +2188,9 @@ Promise.prototype._unsetAt = function Promise$_unsetAt(index) {
 Promise.prototype._resolveFromResolver =
 function Promise$_resolveFromResolver(resolver) {
     var promise = this;
-    var localDebugging = debugging;
-    if (localDebugging) {
-        this._setTrace(this._resolveFromResolver, void 0);
-        this._pushContext();
-    }
+    this._setTrace(void 0);
+    this._pushContext();
+
     function Promise$_resolver(val) {
         if (promise._tryFollow(val)) {
             return;
@@ -2207,7 +2204,7 @@ function Promise$_resolveFromResolver(resolver) {
         promise._reject(val, trace === val ? void 0 : trace);
     }
     var r = tryCatch2(resolver, void 0, Promise$_resolver, Promise$_rejecter);
-    if (localDebugging) this._popContext();
+    this._popContext();
 
     if (r !== void 0 && r === errorObj) {
         var e = r.e;
@@ -2225,7 +2222,7 @@ Promise.prototype._addCallbacks = function Promise$_addCallbacks(
 ) {
     var index = this._length();
 
-    if (index >= 1048575 - 5) {
+    if (index >= 524287 - 5) {
         index = 0;
         this._setLength(0);
     }
@@ -2273,11 +2270,11 @@ Promise.prototype._spreadSlowCase =
 function Promise$_spreadSlowCase(targetFn, promise, values, boundTo) {
     var promiseForAll =
             Promise$_CreatePromiseArray
-                (values, PromiseArray, this._spreadSlowCase, boundTo)
+                (values, PromiseArray, boundTo)
             .promise()
             ._then(function() {
                 return targetFn.apply(boundTo, arguments);
-            }, void 0, void 0, APPLY, void 0, this._spreadSlowCase);
+            }, void 0, void 0, APPLY, void 0);
 
     promise._follow(promiseForAll);
 };
@@ -2286,9 +2283,8 @@ Promise.prototype._callSpread =
 function Promise$_callSpread(handler, promise, value, localDebugging) {
     var boundTo = this._isBound() ? this._boundTo : void 0;
     if (isArray(value)) {
-        var caller = this._settlePromiseFromHandler;
         for (var i = 0, len = value.length; i < len; ++i) {
-            if (isPromise(Promise._cast(value[i], caller, void 0))) {
+            if (isPromise(Promise._cast(value[i], void 0))) {
                 this._spreadSlowCase(handler, promise, value, boundTo);
                 return;
             }
@@ -2337,10 +2333,7 @@ function Promise$_settlePromiseFromHandler(
         promise._rejectUnchecked(err, trace);
     }
     else {
-        var castValue = Promise._cast(x,
-                    localDebugging ? this._settlePromiseFromHandler : void 0,
-                    promise);
-
+        var castValue = Promise._cast(x, promise);
         if (isPromise(castValue)) {
             if (castValue.isRejected() &&
                 !castValue._isCarryingStackTrace() &&
@@ -2394,7 +2387,7 @@ function Promise$_tryFollow(value) {
         value === this) {
         return false;
     }
-    var maybePromise = Promise._cast(value, this._tryFollow, void 0);
+    var maybePromise = Promise._cast(value, void 0);
     if (!isPromise(maybePromise)) {
         return false;
     }
@@ -2402,20 +2395,13 @@ function Promise$_tryFollow(value) {
     return true;
 };
 
-Promise.prototype._resetTrace = function Promise$_resetTrace(caller) {
+Promise.prototype._resetTrace = function Promise$_resetTrace() {
     if (debugging) {
-        var context = this._peekContext();
-        var isTopLevel = context === void 0;
-        this._trace = new CapturedTrace(
-            typeof caller === "function"
-            ? caller
-            : this._resetTrace,
-            isTopLevel
-       );
+        this._trace = new CapturedTrace(this._peekContext() === void 0);
     }
 };
 
-Promise.prototype._setTrace = function Promise$_setTrace(caller, parent) {
+Promise.prototype._setTrace = function Promise$_setTrace(parent) {
     if (debugging) {
         var context = this._peekContext();
         this._traceParent = context;
@@ -2425,12 +2411,7 @@ Promise.prototype._setTrace = function Promise$_setTrace(caller, parent) {
             this._trace = parent._trace;
         }
         else {
-            this._trace = new CapturedTrace(
-                typeof caller === "function"
-                ? caller
-                : this._setTrace,
-                isTopLevel
-           );
+            this._trace = new CapturedTrace(isTopLevel);
         }
     }
     return this;
@@ -2511,19 +2492,15 @@ Promise.prototype._settlePromiseAt = function Promise$_settlePromiseAt(index) {
                 done = true;
             }
             else if (isPromiseArrayProxy(receiver, promise)) {
-
                 if (isFulfilled) receiver._promiseFulfilled(value, promise);
                 else receiver._promiseRejected(value, promise);
-
                 done = true;
             }
         }
 
         if (!done) {
-
             if (isFulfilled) promise._fulfill(value);
             else promise._reject(value, this._getCarriedStackTrace());
-
         }
     }
 
@@ -2591,7 +2568,7 @@ function Promise$_fulfillUnchecked(value) {
     var len = this._length();
 
     if (len > 0) {
-        async.invoke(this._fulfillPromises, this, len);
+        async.invoke(this._settlePromises, this, len);
     }
 };
 
@@ -2630,15 +2607,12 @@ function Promise$_rejectUnchecked(reason, trace) {
 };
 
 Promise.prototype._rejectPromises = function Promise$_rejectPromises() {
-    var len = this._length();
-    for (var i = 0; i < len; i+= 5) {
-        this._settlePromiseAt(i);
-    }
+    this._settlePromises();
     this._unsetCarriedStackTrace();
 };
 
-Promise.prototype._fulfillPromises = function Promise$_fulfillPromises(len) {
-    len = this._length();
+Promise.prototype._settlePromises = function Promise$_settlePromises() {
+    var len = this._length();
     for (var i = 0; i < len; i+= 5) {
         this._settlePromiseAt(i);
     }
@@ -2652,13 +2626,20 @@ function Promise$_ensurePossibleRejectionHandled() {
     }
 };
 
+Promise.prototype._notifyUnhandledRejectionIsHandled =
+function Promise$_notifyUnhandledRejectionIsHandled() {
+    if (typeof unhandledRejectionHandled === "function") {
+        async.invokeLater(unhandledRejectionHandled, void 0, this);
+    }
+};
+
 Promise.prototype._notifyUnhandledRejection =
 function Promise$_notifyUnhandledRejection() {
     if (this._isRejectionUnhandled()) {
         var reason = this._settledValue;
         var trace = this._getCarriedStackTrace();
 
-        this._unsetRejectionIsUnhandled();
+        this._setUnhandledRejectionIsNotified();
 
         if (trace !== void 0) {
             this._unsetCarriedStackTrace();
@@ -2691,14 +2672,14 @@ Promise.prototype._popContext = function Promise$_popContext() {
 };
 
 function Promise$_CreatePromiseArray(
-    promises, PromiseArrayConstructor, caller, boundTo) {
+    promises, PromiseArrayConstructor, boundTo) {
 
     var list = null;
     if (isArray(promises)) {
         list = promises;
     }
     else {
-        list = Promise._cast(promises, caller, void 0);
+        list = Promise._cast(promises, void 0);
         if (list !== promises) {
             list._setBoundTo(boundTo);
         }
@@ -2707,13 +2688,7 @@ function Promise$_CreatePromiseArray(
         }
     }
     if (list !== null) {
-        return new PromiseArrayConstructor(
-            list,
-            typeof caller === "function"
-                ? caller
-                : Promise$_CreatePromiseArray,
-            boundTo
-       );
+        return new PromiseArrayConstructor(list, boundTo);
     }
     return {
         promise: function() {return apiRejection("expecting an array, a promise or a thenable");}
@@ -2721,7 +2696,6 @@ function Promise$_CreatePromiseArray(
 }
 
 var old = global.Promise;
-
 Promise.noConflict = function() {
     if (global.Promise === Promise) {
         global.Promise = old;
@@ -2738,6 +2712,7 @@ Promise._makeSelfResolutionError = makeSelfResolutionError;
 require("./finally.js")(Promise, NEXT_FILTER);
 require("./direct_resolve.js")(Promise);
 require("./thenables.js")(Promise, INTERNAL);
+require("./synchronous_inspection.js")(Promise);
 Promise.RangeError = RangeError;
 Promise.CancellationError = CancellationError;
 Promise.TimeoutError = TimeoutError;
@@ -2747,13 +2722,12 @@ Promise.RejectionError = RejectionError;
 util.toFastProperties(Promise);
 util.toFastProperties(Promise.prototype);
 require('./timers.js')(Promise,INTERNAL);
-require('./synchronous_inspection.js')(Promise);
 require('./any.js')(Promise,Promise$_CreatePromiseArray,PromiseArray);
 require('./race.js')(Promise,INTERNAL);
 require('./call_get.js')(Promise);
 require('./filter.js')(Promise,Promise$_CreatePromiseArray,PromiseArray,apiRejection);
 require('./generators.js')(Promise,apiRejection,INTERNAL);
-require('./map.js')(Promise,Promise$_CreatePromiseArray,PromiseArray,apiRejection);
+require('./map.js')(Promise,PromiseArray,INTERNAL,apiRejection);
 require('./nodeify.js')(Promise);
 require('./promisify.js')(Promise,INTERNAL);
 require('./props.js')(Promise,PromiseArray);
@@ -2768,7 +2742,7 @@ return Promise;
 
 };
 
-},{"./any.js":1,"./async.js":2,"./call_get.js":4,"./cancel.js":5,"./captured_trace.js":6,"./catch_filter.js":7,"./direct_resolve.js":8,"./errors.js":9,"./errors_api_rejection":10,"./filter.js":12,"./finally.js":13,"./generators.js":14,"./global.js":15,"./map.js":16,"./nodeify.js":17,"./progress.js":18,"./promise_array.js":20,"./promise_resolver.js":22,"./promisify.js":24,"./props.js":26,"./race.js":28,"./reduce.js":29,"./settle.js":31,"./some.js":33,"./synchronous_inspection.js":35,"./thenables.js":36,"./timers.js":37,"./util.js":38,"__browserify_process":51}],20:[function(require,module,exports){
+},{"./any.js":1,"./async.js":2,"./call_get.js":4,"./cancel.js":5,"./captured_trace.js":6,"./catch_filter.js":7,"./direct_resolve.js":8,"./errors.js":9,"./errors_api_rejection":10,"./filter.js":12,"./finally.js":13,"./generators.js":14,"./global.js":15,"./map.js":16,"./nodeify.js":17,"./progress.js":18,"./promise_array.js":20,"./promise_resolver.js":21,"./promisify.js":23,"./props.js":25,"./race.js":27,"./reduce.js":28,"./settle.js":30,"./some.js":32,"./synchronous_inspection.js":34,"./thenables.js":35,"./timers.js":36,"./util.js":37,"__browserify_process":50}],20:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -2807,10 +2781,10 @@ function toResolutionValue(val) {
     }
 }
 
-function PromiseArray(values, caller, boundTo) {
+function PromiseArray(values, boundTo) {
     var promise = this._promise = new Promise(INTERNAL);
     var parent = void 0;
-    if (Promise.is(values)) {
+    if (values instanceof Promise) {
         parent = values;
         if (values._cancellable()) {
             promise._setCancellable();
@@ -2820,7 +2794,7 @@ function PromiseArray(values, caller, boundTo) {
             promise._setBoundTo(boundTo);
         }
     }
-    promise._setTrace(caller, parent);
+    promise._setTrace(parent);
     this._values = values;
     this._length = 0;
     this._totalResolved = 0;
@@ -2839,7 +2813,7 @@ PromiseArray.prototype.promise = function PromiseArray$promise() {
 PromiseArray.prototype._init =
 function PromiseArray$_init(_, resolveValueIfEmpty) {
     var values = this._values;
-    if (Promise.is(values)) {
+    if (values instanceof Promise) {
         if (values.isFulfilled()) {
             values = values._settledValue;
             if (!isArray(values)) {
@@ -2855,8 +2829,7 @@ function PromiseArray$_init(_, resolveValueIfEmpty) {
                 this._reject,
                 void 0,
                 this,
-                resolveValueIfEmpty,
-                this.constructor
+                resolveValueIfEmpty
            );
             return;
         }
@@ -2886,7 +2859,7 @@ function PromiseArray$_init(_, resolveValueIfEmpty) {
             newLen--;
             continue;
         }
-        var maybePromise = Promise._cast(promise, void 0, void 0);
+        var maybePromise = Promise._cast(promise, void 0);
         if (maybePromise instanceof Promise) {
             if (maybePromise.isPending()) {
                 maybePromise._proxyPromiseArray(this, i);
@@ -2923,7 +2896,7 @@ function PromiseArray$_init(_, resolveValueIfEmpty) {
 PromiseArray.prototype._settlePromiseAt =
 function PromiseArray$_settlePromiseAt(index) {
     var value = this._values[index];
-    if (!Promise.is(value)) {
+    if (!(value instanceof Promise)) {
         this._promiseFulfilled(value, index);
     }
     else if (value.isFulfilled()) {
@@ -3003,75 +2976,7 @@ function PromiseArray$_promiseRejected(reason, index) {
 return PromiseArray;
 };
 
-},{"./async.js":2,"./errors.js":9,"./util.js":38}],21:[function(require,module,exports){
-/**
- * Copyright (c) 2014 Petka Antonov
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy
- * of this software and associated documentation files (the "Software"), to deal
- * in the Software without restriction, including without limitation the rights
- * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
- * copies of the Software, and to permit persons to whom the Software is
- * furnished to do so, subject to the following conditions:</p>
- * 
- * The above copyright notice and this permission notice shall be included in
- * all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
- * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.  IN NO EVENT SHALL THE
- * AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
- * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
- * THE SOFTWARE.
- * 
- */
-"use strict";
-var TypeError = require("./errors.js").TypeError;
-
-function PromiseInspection(promise) {
-    if (promise !== void 0) {
-        this._bitField = promise._bitField;
-        this._settledValue = promise.isResolved()
-            ? promise._settledValue
-            : void 0;
-    }
-    else {
-        this._bitField = 0;
-        this._settledValue = void 0;
-    }
-}
-PromiseInspection.prototype.isFulfilled =
-function PromiseInspection$isFulfilled() {
-    return (this._bitField & 268435456) > 0;
-};
-
-PromiseInspection.prototype.isRejected =
-function PromiseInspection$isRejected() {
-    return (this._bitField & 134217728) > 0;
-};
-
-PromiseInspection.prototype.isPending = function PromiseInspection$isPending() {
-    return (this._bitField & 402653184) === 0;
-};
-
-PromiseInspection.prototype.value = function PromiseInspection$value() {
-    if (!this.isFulfilled()) {
-        throw new TypeError("cannot get fulfillment value of a non-fulfilled promise");
-    }
-    return this._settledValue;
-};
-
-PromiseInspection.prototype.error = function PromiseInspection$error() {
-    if (!this.isRejected()) {
-        throw new TypeError("cannot get rejection reason of a non-rejected promise");
-    }
-    return this._settledValue;
-};
-
-module.exports = PromiseInspection;
-
-},{"./errors.js":9}],22:[function(require,module,exports){
+},{"./async.js":2,"./errors.js":9,"./util.js":37}],21:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -3225,7 +3130,7 @@ function PromiseResolver$_setCarriedStackTrace(trace) {
 
 module.exports = PromiseResolver;
 
-},{"./async.js":2,"./errors.js":9,"./es5.js":11,"./util.js":38}],23:[function(require,module,exports){
+},{"./async.js":2,"./errors.js":9,"./es5.js":11,"./util.js":37}],22:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -3275,9 +3180,9 @@ function promiseFromYieldHandler(value) {
     return null;
 }
 
-function PromiseSpawn(generatorFunction, receiver, caller) {
+function PromiseSpawn(generatorFunction, receiver) {
     var promise = this._promise = new Promise(INTERNAL);
-    promise._setTrace(caller, void 0);
+    promise._setTrace(void 0);
     this._generatorFunction = generatorFunction;
     this._receiver = receiver;
     this._generator = void 0;
@@ -3330,8 +3235,7 @@ PromiseSpawn.prototype._continue = function PromiseSpawn$_continue(result) {
             this._throw,
             void 0,
             this,
-            null,
-            void 0
+            null
        );
     }
 };
@@ -3358,7 +3262,7 @@ PromiseSpawn.addYieldHandler = function PromiseSpawn$AddYieldHandler(fn) {
 return PromiseSpawn;
 };
 
-},{"./errors.js":9,"./util.js":38}],24:[function(require,module,exports){
+},{"./errors.js":9,"./util.js":37}],23:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -3544,7 +3448,7 @@ function makeNodePromisifiedEval(callback, receiver, originalName, fn) {
         "(" + parameterDeclaration(newParameterCount) + ") {\"use strict\";" +
         "var len = arguments.length;" +
         "var promise = new Promise(INTERNAL);"+
-        "promise._setTrace(" + callbackName + ", void 0);" +
+        "promise._setTrace(void 0);" +
         "var fn = nodebackForPromise(promise);"+
         "try {" +
         "switch(len) {" +
@@ -3571,7 +3475,7 @@ function makeNodePromisifiedClosure(callback, receiver) {
             callback = _receiver[callback];
         }
         var promise = new Promise(INTERNAL);
-        promise._setTrace(promisified, void 0);
+        promise._setTrace(void 0);
         var fn = nodebackForPromise(promise);
         try {
             callback.apply(_receiver, withAppended(arguments, fn));
@@ -3638,7 +3542,7 @@ Promise.promisifyAll = function Promise$PromisifyAll(target) {
 };
 
 
-},{"./es5.js":11,"./promise_resolver.js":22,"./util.js":38}],25:[function(require,module,exports){
+},{"./es5.js":11,"./promise_resolver.js":21,"./util.js":37}],24:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -3667,13 +3571,13 @@ var util = require("./util.js");
 var inherits = util.inherits;
 var es5 = require("./es5.js");
 
-function PropertiesPromiseArray(obj, caller, boundTo) {
+function PropertiesPromiseArray(obj, boundTo) {
     var keys = es5.keys(obj);
     var values = new Array(keys.length);
     for (var i = 0, len = values.length; i < len; ++i) {
         values[i] = obj[keys[i]];
     }
-    this.constructor$(values, caller, boundTo);
+    this.constructor$(values, boundTo);
     if (!this._isResolved()) {
         for (var i = 0, len = keys.length; i < len; ++i) {
             values.push(keys[i]);
@@ -3717,7 +3621,7 @@ PromiseArray.PropertiesPromiseArray = PropertiesPromiseArray;
 return PropertiesPromiseArray;
 };
 
-},{"./es5.js":11,"./util.js":38}],26:[function(require,module,exports){
+},{"./es5.js":11,"./util.js":37}],25:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -3742,49 +3646,48 @@ return PropertiesPromiseArray;
  */
 "use strict";
 module.exports = function(Promise, PromiseArray) {
-    var PropertiesPromiseArray = require("./properties_promise_array.js")(
-        Promise, PromiseArray);
-    var util = require("./util.js");
-    var apiRejection = require("./errors_api_rejection")(Promise);
-    var isObject = util.isObject;
+var PropertiesPromiseArray = require("./properties_promise_array.js")(
+    Promise, PromiseArray);
+var util = require("./util.js");
+var apiRejection = require("./errors_api_rejection")(Promise);
+var isObject = util.isObject;
 
-    function Promise$_Props(promises, useBound, caller) {
-        var ret;
-        var castValue = Promise._cast(promises, caller, void 0);
+function Promise$_Props(promises, useBound) {
+    var ret;
+    var castValue = Promise._cast(promises, void 0);
 
-        if (!isObject(castValue)) {
-            return apiRejection("cannot await properties of a non-object");
-        }
-        else if (Promise.is(castValue)) {
-            ret = castValue._then(Promise.props, void 0, void 0,
-                            void 0, void 0, caller);
-        }
-        else {
-            ret = new PropertiesPromiseArray(
-                castValue,
-                caller,
-                useBound === true && castValue._isBound()
-                            ? castValue._boundTo
-                            : void 0
-           ).promise();
-            useBound = false;
-        }
-        if (useBound === true && castValue._isBound()) {
-            ret._setBoundTo(castValue._boundTo);
-        }
-        return ret;
+    if (!isObject(castValue)) {
+        return apiRejection("cannot await properties of a non-object");
     }
+    else if (castValue instanceof Promise) {
+        ret = castValue._then(Promise.props, void 0, void 0,
+                        void 0, void 0);
+    }
+    else {
+        ret = new PropertiesPromiseArray(
+            castValue,
+            useBound === true && castValue._isBound()
+                        ? castValue._boundTo
+                        : void 0
+       ).promise();
+        useBound = false;
+    }
+    if (useBound === true && castValue._isBound()) {
+        ret._setBoundTo(castValue._boundTo);
+    }
+    return ret;
+}
 
-    Promise.prototype.props = function Promise$props() {
-        return Promise$_Props(this, true, this.props);
-    };
-
-    Promise.props = function Promise$Props(promises) {
-        return Promise$_Props(promises, false, Promise.props);
-    };
+Promise.prototype.props = function Promise$props() {
+    return Promise$_Props(this, true);
 };
 
-},{"./errors_api_rejection":10,"./properties_promise_array.js":25,"./util.js":38}],27:[function(require,module,exports){
+Promise.props = function Promise$Props(promises) {
+    return Promise$_Props(promises, false);
+};
+};
+
+},{"./errors_api_rejection":10,"./properties_promise_array.js":24,"./util.js":37}],26:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -3921,7 +3824,7 @@ Queue.prototype._resizeTo = function Queue$_resizeTo(capacity) {
 
 module.exports = Queue;
 
-},{}],28:[function(require,module,exports){
+},{}],27:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -3946,69 +3849,68 @@ module.exports = Queue;
  */
 "use strict";
 module.exports = function(Promise, INTERNAL) {
-    var apiRejection = require("./errors_api_rejection.js")(Promise);
-    var isArray = require("./util.js").isArray;
+var apiRejection = require("./errors_api_rejection.js")(Promise);
+var isArray = require("./util.js").isArray;
 
-    var raceLater = function Promise$_raceLater(promise) {
-        return promise.then(function Promise$_lateRacer(array) {
-            return Promise$_Race(array, Promise$_lateRacer, promise);
-        });
-    };
+var raceLater = function Promise$_raceLater(promise) {
+    return promise.then(function(array) {
+        return Promise$_Race(array, promise);
+    });
+};
 
-    var hasOwn = {}.hasOwnProperty;
-    function Promise$_Race(promises, caller, parent) {
-        var maybePromise = Promise._cast(promises, caller, void 0);
+var hasOwn = {}.hasOwnProperty;
+function Promise$_Race(promises, parent) {
+    var maybePromise = Promise._cast(promises, void 0);
 
-        if (Promise.is(maybePromise)) {
-            return raceLater(maybePromise);
-        }
-        else if (!isArray(promises)) {
-            return apiRejection("expecting an array, a promise or a thenable");
-        }
-
-        var ret = new Promise(INTERNAL);
-        ret._setTrace(caller, parent);
-        if (parent !== void 0) {
-            if (parent._isBound()) {
-                ret._setBoundTo(parent._boundTo);
-            }
-            if (parent._cancellable()) {
-                ret._setCancellable();
-                ret._cancellationParent = parent;
-            }
-        }
-        var fulfill = ret._fulfill;
-        var reject = ret._reject;
-        for (var i = 0, len = promises.length; i < len; ++i) {
-            var val = promises[i];
-
-            if (val === void 0 && !(hasOwn.call(promises, i))) {
-                continue;
-            }
-
-            Promise.cast(val)._then(
-                fulfill,
-                reject,
-                void 0,
-                ret,
-                null,
-                caller
-           );
-        }
-        return ret;
+    if (maybePromise instanceof Promise) {
+        return raceLater(maybePromise);
+    }
+    else if (!isArray(promises)) {
+        return apiRejection("expecting an array, a promise or a thenable");
     }
 
-    Promise.race = function Promise$Race(promises) {
-        return Promise$_Race(promises, Promise.race, void 0);
-    };
+    var ret = new Promise(INTERNAL);
+    ret._setTrace(parent);
+    if (parent !== void 0) {
+        if (parent._isBound()) {
+            ret._setBoundTo(parent._boundTo);
+        }
+        if (parent._cancellable()) {
+            ret._setCancellable();
+            ret._cancellationParent = parent;
+        }
+    }
+    var fulfill = ret._fulfill;
+    var reject = ret._reject;
+    for (var i = 0, len = promises.length; i < len; ++i) {
+        var val = promises[i];
 
-    Promise.prototype.race = function Promise$race() {
-        return Promise$_Race(this, this.race, void 0);
-    };
+        if (val === void 0 && !(hasOwn.call(promises, i))) {
+            continue;
+        }
+
+        Promise.cast(val)._then(
+            fulfill,
+            reject,
+            void 0,
+            ret,
+            null
+       );
+    }
+    return ret;
+}
+
+Promise.race = function Promise$Race(promises) {
+    return Promise$_Race(promises, void 0);
+};
+
+Promise.prototype.race = function Promise$race() {
+    return Promise$_Race(this, void 0);
+};
 
 };
 
-},{"./errors_api_rejection.js":10,"./util.js":38}],29:[function(require,module,exports){
+},{"./errors_api_rejection.js":10,"./util.js":37}],28:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4036,154 +3938,142 @@ module.exports = function(
     Promise, Promise$_CreatePromiseArray,
     PromiseArray, apiRejection, INTERNAL) {
 
-    function Reduction(callback, index, accum, items, receiver) {
-        this.promise = new Promise(INTERNAL);
-        this.index = index;
-        this.length = items.length;
-        this.items = items;
-        this.callback = callback;
-        this.receiver = receiver;
-        this.accum = accum;
-    }
+function Reduction(callback, index, accum, items, receiver) {
+    this.promise = new Promise(INTERNAL);
+    this.index = index;
+    this.length = items.length;
+    this.items = items;
+    this.callback = callback;
+    this.receiver = receiver;
+    this.accum = accum;
+}
 
-    Reduction.prototype.reject = function Reduction$reject(e) {
-        this.promise._reject(e);
-    };
-
-    Reduction.prototype.fulfill = function Reduction$fulfill(value, index) {
-        this.accum = value;
-        this.index = index + 1;
-        this.iterate();
-    };
-
-    Reduction.prototype.iterate = function Reduction$iterate() {
-        var i = this.index;
-        var len = this.length;
-        var items = this.items;
-        var result = this.accum;
-        var receiver = this.receiver;
-        var callback = this.callback;
-        var iterate = this.iterate;
-
-        for(; i < len; ++i) {
-            result = Promise._cast(
-                callback.call(
-                    receiver,
-                    result,
-                    items[i],
-                    i,
-                    len
-                ),
-                iterate,
-                void 0
-            );
-
-            if (result instanceof Promise) {
-                result._then(
-                    this.fulfill, this.reject, void 0, this, i, iterate);
-                return;
-            }
-        }
-        this.promise._fulfill(result);
-    };
-
-    function Promise$_reducer(fulfilleds, initialValue) {
-        var fn = this;
-        var receiver = void 0;
-        if (typeof fn !== "function")  {
-            receiver = fn.receiver;
-            fn = fn.fn;
-        }
-        var len = fulfilleds.length;
-        var accum = void 0;
-        var startIndex = 0;
-
-        if (initialValue !== void 0) {
-            accum = initialValue;
-            startIndex = 0;
-        }
-        else {
-            startIndex = 1;
-            if (len > 0) accum = fulfilleds[0];
-        }
-        var i = startIndex;
-
-        if (i >= len) {
-            return accum;
-        }
-
-        var reduction = new Reduction(fn, i, accum, fulfilleds, receiver);
-        reduction.iterate();
-        return reduction.promise;
-    }
-
-    function Promise$_unpackReducer(fulfilleds) {
-        var fn = this.fn;
-        var initialValue = this.initialValue;
-        return Promise$_reducer.call(fn, fulfilleds, initialValue);
-    }
-
-    function Promise$_slowReduce(
-        promises, fn, initialValue, useBound, caller) {
-        return initialValue._then(function callee(initialValue) {
-            return Promise$_Reduce(
-                promises, fn, initialValue, useBound, callee);
-        }, void 0, void 0, void 0, void 0, caller);
-    }
-
-    function Promise$_Reduce(promises, fn, initialValue, useBound, caller) {
-        if (typeof fn !== "function") {
-            return apiRejection("fn must be a function");
-        }
-
-        if (useBound === true && promises._isBound()) {
-            fn = {
-                fn: fn,
-                receiver: promises._boundTo
-            };
-        }
-
-        if (initialValue !== void 0) {
-            if (Promise.is(initialValue)) {
-                if (initialValue.isFulfilled()) {
-                    initialValue = initialValue._settledValue;
-                }
-                else {
-                    return Promise$_slowReduce(promises,
-                        fn, initialValue, useBound, caller);
-                }
-            }
-
-            return Promise$_CreatePromiseArray(promises, PromiseArray, caller,
-                useBound === true && promises._isBound()
-                    ? promises._boundTo
-                    : void 0)
-                .promise()
-                ._then(Promise$_unpackReducer, void 0, void 0, {
-                    fn: fn,
-                    initialValue: initialValue
-                }, void 0, Promise.reduce);
-        }
-        return Promise$_CreatePromiseArray(promises, PromiseArray, caller,
-                useBound === true && promises._isBound()
-                    ? promises._boundTo
-                    : void 0).promise()
-            ._then(Promise$_reducer, void 0, void 0, fn, void 0, caller);
-    }
-
-
-    Promise.reduce = function Promise$Reduce(promises, fn, initialValue) {
-        return Promise$_Reduce(promises, fn,
-            initialValue, false, Promise.reduce);
-    };
-
-    Promise.prototype.reduce = function Promise$reduce(fn, initialValue) {
-        return Promise$_Reduce(this, fn, initialValue,
-                                true, this.reduce);
-    };
+Reduction.prototype.reject = function Reduction$reject(e) {
+    this.promise._reject(e);
 };
 
-},{}],30:[function(require,module,exports){
+Reduction.prototype.fulfill = function Reduction$fulfill(value, index) {
+    this.accum = value;
+    this.index = index + 1;
+    this.iterate();
+};
+
+Reduction.prototype.iterate = function Reduction$iterate() {
+    var i = this.index;
+    var len = this.length;
+    var items = this.items;
+    var result = this.accum;
+    var receiver = this.receiver;
+    var callback = this.callback;
+
+    for (; i < len; ++i) {
+        result = callback.call(receiver, result, items[i], i, len);
+        result = Promise._cast(result, void 0);
+
+        if (result instanceof Promise) {
+            result._then(
+                this.fulfill, this.reject, void 0, this, i);
+            return;
+        }
+    }
+    this.promise._fulfill(result);
+};
+
+function Promise$_reducer(fulfilleds, initialValue) {
+    var fn = this;
+    var receiver = void 0;
+    if (typeof fn !== "function")  {
+        receiver = fn.receiver;
+        fn = fn.fn;
+    }
+    var len = fulfilleds.length;
+    var accum = void 0;
+    var startIndex = 0;
+
+    if (initialValue !== void 0) {
+        accum = initialValue;
+        startIndex = 0;
+    }
+    else {
+        startIndex = 1;
+        if (len > 0) accum = fulfilleds[0];
+    }
+    var i = startIndex;
+
+    if (i >= len) {
+        return accum;
+    }
+
+    var reduction = new Reduction(fn, i, accum, fulfilleds, receiver);
+    reduction.iterate();
+    return reduction.promise;
+}
+
+function Promise$_unpackReducer(fulfilleds) {
+    var fn = this.fn;
+    var initialValue = this.initialValue;
+    return Promise$_reducer.call(fn, fulfilleds, initialValue);
+}
+
+function Promise$_slowReduce(
+    promises, fn, initialValue, useBound) {
+    return initialValue._then(function(initialValue) {
+        return Promise$_Reduce(
+            promises, fn, initialValue, useBound);
+    }, void 0, void 0, void 0, void 0);
+}
+
+function Promise$_Reduce(promises, fn, initialValue, useBound) {
+    if (typeof fn !== "function") {
+        return apiRejection("fn must be a function");
+    }
+
+    if (useBound === true && promises._isBound()) {
+        fn = {
+            fn: fn,
+            receiver: promises._boundTo
+        };
+    }
+
+    if (initialValue !== void 0) {
+        if (initialValue instanceof Promise) {
+            if (initialValue.isFulfilled()) {
+                initialValue = initialValue._settledValue;
+            }
+            else {
+                return Promise$_slowReduce(promises,
+                    fn, initialValue, useBound);
+            }
+        }
+
+        return Promise$_CreatePromiseArray(promises, PromiseArray,
+            useBound === true && promises._isBound()
+                ? promises._boundTo
+                : void 0)
+            .promise()
+            ._then(Promise$_unpackReducer, void 0, void 0, {
+                fn: fn,
+                initialValue: initialValue
+            }, void 0);
+    }
+    return Promise$_CreatePromiseArray(promises, PromiseArray,
+            useBound === true && promises._isBound()
+                ? promises._boundTo
+                : void 0).promise()
+        ._then(Promise$_reducer, void 0, void 0, fn, void 0);
+}
+
+
+Promise.reduce = function Promise$Reduce(promises, fn, initialValue) {
+    return Promise$_Reduce(promises, fn, initialValue, false);
+};
+
+Promise.prototype.reduce = function Promise$reduce(fn, initialValue) {
+    return Promise$_Reduce(this, fn, initialValue, true);
+};
+};
+
+},{}],29:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4306,7 +4196,7 @@ else {
 
 module.exports = schedule;
 
-},{"./global.js":15,"__browserify_process":51}],31:[function(require,module,exports){
+},{"./global.js":15,"__browserify_process":50}],30:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4333,31 +4223,29 @@ module.exports = schedule;
 module.exports =
     function(Promise, Promise$_CreatePromiseArray, PromiseArray) {
 
-    var SettledPromiseArray = require("./settled_promise_array.js")(
-        Promise, PromiseArray);
+var SettledPromiseArray = require("./settled_promise_array.js")(
+    Promise, PromiseArray);
 
-    function Promise$_Settle(promises, useBound, caller) {
-        return Promise$_CreatePromiseArray(
-            promises,
-            SettledPromiseArray,
-            caller,
-            useBound === true && promises._isBound()
-                ? promises._boundTo
-                : void 0
-       ).promise();
-    }
+function Promise$_Settle(promises, useBound) {
+    return Promise$_CreatePromiseArray(
+        promises,
+        SettledPromiseArray,
+        useBound === true && promises._isBound()
+            ? promises._boundTo
+            : void 0
+   ).promise();
+}
 
-    Promise.settle = function Promise$Settle(promises) {
-        return Promise$_Settle(promises, false, Promise.settle);
-    };
-
-    Promise.prototype.settle = function Promise$settle() {
-        return Promise$_Settle(this, true, this.settle);
-    };
-
+Promise.settle = function Promise$Settle(promises) {
+    return Promise$_Settle(promises, false);
 };
 
-},{"./settled_promise_array.js":32}],32:[function(require,module,exports){
+Promise.prototype.settle = function Promise$settle() {
+    return Promise$_Settle(this, true);
+};
+};
+
+},{"./settled_promise_array.js":31}],31:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4382,11 +4270,11 @@ module.exports =
  */
 "use strict";
 module.exports = function(Promise, PromiseArray) {
-var PromiseInspection = require("./promise_inspection.js");
+var PromiseInspection = Promise.PromiseInspection;
 var util = require("./util.js");
 var inherits = util.inherits;
-function SettledPromiseArray(values, caller, boundTo) {
-    this.constructor$(values, caller, boundTo);
+function SettledPromiseArray(values, boundTo) {
+    this.constructor$(values, boundTo);
 }
 inherits(SettledPromiseArray, PromiseArray);
 
@@ -4419,7 +4307,7 @@ function SettledPromiseArray$_promiseRejected(reason, index) {
 return SettledPromiseArray;
 };
 
-},{"./promise_inspection.js":21,"./util.js":38}],33:[function(require,module,exports){
+},{"./util.js":37}],32:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4446,39 +4334,38 @@ return SettledPromiseArray;
 module.exports =
 function(Promise, Promise$_CreatePromiseArray, PromiseArray, apiRejection) {
 
-    var SomePromiseArray = require("./some_promise_array.js")(PromiseArray);
-    function Promise$_Some(promises, howMany, useBound, caller) {
-        if ((howMany | 0) !== howMany || howMany < 0) {
-            return apiRejection("expecting a positive integer");
-        }
-        var ret = Promise$_CreatePromiseArray(
-            promises,
-            SomePromiseArray,
-            caller,
-            useBound === true && promises._isBound()
-                ? promises._boundTo
-                : void 0
-       );
-        var promise = ret.promise();
-        if (promise.isRejected()) {
-            return promise;
-        }
-        ret.setHowMany(howMany);
-        ret.init();
+var SomePromiseArray = require("./some_promise_array.js")(PromiseArray);
+function Promise$_Some(promises, howMany, useBound) {
+    if ((howMany | 0) !== howMany || howMany < 0) {
+        return apiRejection("expecting a positive integer");
+    }
+    var ret = Promise$_CreatePromiseArray(
+        promises,
+        SomePromiseArray,
+        useBound === true && promises._isBound()
+            ? promises._boundTo
+            : void 0
+   );
+    var promise = ret.promise();
+    if (promise.isRejected()) {
         return promise;
     }
+    ret.setHowMany(howMany);
+    ret.init();
+    return promise;
+}
 
-    Promise.some = function Promise$Some(promises, howMany) {
-        return Promise$_Some(promises, howMany, false, Promise.some);
-    };
+Promise.some = function Promise$Some(promises, howMany) {
+    return Promise$_Some(promises, howMany, false);
+};
 
-    Promise.prototype.some = function Promise$some(count) {
-        return Promise$_Some(this, count, true, this.some);
-    };
+Promise.prototype.some = function Promise$some(count) {
+    return Promise$_Some(this, count, true);
+};
 
 };
 
-},{"./some_promise_array.js":34}],34:[function(require,module,exports){
+},{"./some_promise_array.js":33}],33:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4508,8 +4395,8 @@ var RangeError = require("./errors.js").RangeError;
 var inherits = util.inherits;
 var isArray = util.isArray;
 
-function SomePromiseArray(values, caller, boundTo) {
-    this.constructor$(values, caller, boundTo);
+function SomePromiseArray(values, boundTo) {
+    this.constructor$(values, boundTo);
     this._howMany = 0;
     this._unwrap = false;
     this._initialized = false;
@@ -4611,7 +4498,7 @@ function SomePromiseArray$_canPossiblyFulfill() {
 return SomePromiseArray;
 };
 
-},{"./errors.js":9,"./util.js":38}],35:[function(require,module,exports){
+},{"./errors.js":9,"./util.js":37}],34:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4636,14 +4523,63 @@ return SomePromiseArray;
  */
 "use strict";
 module.exports = function(Promise) {
-    var PromiseInspection = require("./promise_inspection.js");
+function PromiseInspection(promise) {
+    if (promise !== void 0) {
+        this._bitField = promise._bitField;
+        this._settledValue = promise.isResolved()
+            ? promise._settledValue
+            : void 0;
+    }
+    else {
+        this._bitField = 0;
+        this._settledValue = void 0;
+    }
+}
 
-    Promise.prototype.inspect = function Promise$inspect() {
-        return new PromiseInspection(this);
-    };
+PromiseInspection.prototype.isFulfilled =
+Promise.prototype.isFulfilled = function Promise$isFulfilled() {
+    return (this._bitField & 268435456) > 0;
 };
 
-},{"./promise_inspection.js":21}],36:[function(require,module,exports){
+PromiseInspection.prototype.isRejected =
+Promise.prototype.isRejected = function Promise$isRejected() {
+    return (this._bitField & 134217728) > 0;
+};
+
+PromiseInspection.prototype.isPending =
+Promise.prototype.isPending = function Promise$isPending() {
+    return (this._bitField & 402653184) === 0;
+};
+
+PromiseInspection.prototype.value =
+Promise.prototype.value = function Promise$value() {
+    if (!this.isFulfilled()) {
+        throw new TypeError("cannot get fulfillment value of a non-fulfilled promise");
+    }
+    return this._settledValue;
+};
+
+PromiseInspection.prototype.error =
+Promise.prototype.reason = function Promise$reason() {
+    if (!this.isRejected()) {
+        throw new TypeError("cannot get rejection reason of a non-rejected promise");
+    }
+    return this._settledValue;
+};
+
+PromiseInspection.prototype.isResolved =
+Promise.prototype.isResolved = function Promise$isResolved() {
+    return (this._bitField & 402653184) > 0;
+};
+
+Promise.prototype.inspect = function Promise$inspect() {
+    return new PromiseInspection(this);
+};
+
+Promise.PromiseInspection = PromiseInspection;
+};
+
+},{}],35:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4668,122 +4604,119 @@ module.exports = function(Promise) {
  */
 "use strict";
 module.exports = function(Promise, INTERNAL) {
-    var util = require("./util.js");
-    var canAttach = require("./errors.js").canAttach;
-    var errorObj = util.errorObj;
-    var isObject = util.isObject;
+var util = require("./util.js");
+var canAttach = require("./errors.js").canAttach;
+var errorObj = util.errorObj;
+var isObject = util.isObject;
 
-    function getThen(obj) {
-        try {
-            return obj.then;
-        }
-        catch(e) {
-            errorObj.e = e;
-            return errorObj;
-        }
+function getThen(obj) {
+    try {
+        return obj.then;
     }
+    catch(e) {
+        errorObj.e = e;
+        return errorObj;
+    }
+}
 
-    function Promise$_Cast(obj, caller, originalPromise) {
-        if (isObject(obj)) {
-            if (obj instanceof Promise) {
-                return obj;
-            }
-            else if (isAnyBluebirdPromise(obj)) {
-                var ret = new Promise(INTERNAL);
-                ret._setTrace(caller, void 0);
-                obj._then(
-                    ret._fulfillUnchecked,
-                    ret._rejectUncheckedCheckError,
-                    ret._progressUnchecked,
-                    ret,
-                    null,
-                    void 0
-                );
-                ret._setFollowing();
-                return ret;
-            }
-            var then = getThen(obj);
-            if (then === errorObj) {
-                caller = typeof caller === "function" ? caller : Promise$_Cast;
-                if (originalPromise !== void 0 && canAttach(then.e)) {
-                    originalPromise._attachExtraTrace(then.e);
-                }
-                return Promise.reject(then.e, caller);
-            }
-            else if (typeof then === "function") {
-                caller = typeof caller === "function" ? caller : Promise$_Cast;
-                return Promise$_doThenable(obj, then, caller, originalPromise);
-            }
+function Promise$_Cast(obj, originalPromise) {
+    if (isObject(obj)) {
+        if (obj instanceof Promise) {
+            return obj;
         }
-        return obj;
-    }
-
-    var hasProp = {}.hasOwnProperty;
-    function isAnyBluebirdPromise(obj) {
-        return hasProp.call(obj, "_promise0");
-    }
-
-    function Promise$_doThenable(x, then, caller, originalPromise) {
-        var resolver = Promise.defer(caller);
-        var called = false;
-        try {
-            then.call(
-                x,
-                Promise$_resolveFromThenable,
-                Promise$_rejectFromThenable,
-                Promise$_progressFromThenable
+        else if (isAnyBluebirdPromise(obj)) {
+            var ret = new Promise(INTERNAL);
+            ret._setTrace(void 0);
+            obj._then(
+                ret._fulfillUnchecked,
+                ret._rejectUncheckedCheckError,
+                ret._progressUnchecked,
+                ret,
+                null
             );
+            ret._setFollowing();
+            return ret;
         }
-        catch(e) {
-            if (!called) {
-                called = true;
-                var trace = canAttach(e) ? e : new Error(e + "");
-                if (originalPromise !== void 0) {
-                    originalPromise._attachExtraTrace(trace);
-                }
-                resolver.promise._reject(e, trace);
+        var then = getThen(obj);
+        if (then === errorObj) {
+            if (originalPromise !== void 0 && canAttach(then.e)) {
+                originalPromise._attachExtraTrace(then.e);
             }
+            return Promise.reject(then.e);
         }
-        return resolver.promise;
-
-        function Promise$_resolveFromThenable(y) {
-            if (called) return;
-            called = true;
-
-            if (x === y) {
-                var e = Promise._makeSelfResolutionError();
-                if (originalPromise !== void 0) {
-                    originalPromise._attachExtraTrace(e);
-                }
-                resolver.promise._reject(e, void 0);
-                return;
-            }
-            resolver.resolve(y);
+        else if (typeof then === "function") {
+            return Promise$_doThenable(obj, then, originalPromise);
         }
+    }
+    return obj;
+}
 
-        function Promise$_rejectFromThenable(r) {
-            if (called) return;
+var hasProp = {}.hasOwnProperty;
+function isAnyBluebirdPromise(obj) {
+    return hasProp.call(obj, "_promise0");
+}
+
+function Promise$_doThenable(x, then, originalPromise) {
+    var resolver = Promise.defer();
+    var called = false;
+    try {
+        then.call(
+            x,
+            Promise$_resolveFromThenable,
+            Promise$_rejectFromThenable,
+            Promise$_progressFromThenable
+        );
+    }
+    catch(e) {
+        if (!called) {
             called = true;
-            var trace = canAttach(r) ? r : new Error(r + "");
+            var trace = canAttach(e) ? e : new Error(e + "");
             if (originalPromise !== void 0) {
                 originalPromise._attachExtraTrace(trace);
             }
-            resolver.promise._reject(r, trace);
-        }
-
-        function Promise$_progressFromThenable(v) {
-            if (called) return;
-            var promise = resolver.promise;
-            if (typeof promise._progress === "function") {
-                promise._progress(v);
-            }
+            resolver.promise._reject(e, trace);
         }
     }
+    return resolver.promise;
 
-    Promise._cast = Promise$_Cast;
+    function Promise$_resolveFromThenable(y) {
+        if (called) return;
+        called = true;
+
+        if (x === y) {
+            var e = Promise._makeSelfResolutionError();
+            if (originalPromise !== void 0) {
+                originalPromise._attachExtraTrace(e);
+            }
+            resolver.promise._reject(e, void 0);
+            return;
+        }
+        resolver.resolve(y);
+    }
+
+    function Promise$_rejectFromThenable(r) {
+        if (called) return;
+        called = true;
+        var trace = canAttach(r) ? r : new Error(r + "");
+        if (originalPromise !== void 0) {
+            originalPromise._attachExtraTrace(trace);
+        }
+        resolver.promise._reject(r, trace);
+    }
+
+    function Promise$_progressFromThenable(v) {
+        if (called) return;
+        var promise = resolver.promise;
+        if (typeof promise._progress === "function") {
+            promise._progress(v);
+        }
+    }
+}
+
+Promise._cast = Promise$_Cast;
 };
 
-},{"./errors.js":9,"./util.js":38}],37:[function(require,module,exports){
+},{"./errors.js":9,"./util.js":37}],36:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -4807,99 +4740,88 @@ module.exports = function(Promise, INTERNAL) {
  * 
  */
 "use strict";
-
 var global = require("./global.js");
-var setTimeout = function(fn, time) {
+var setTimeout = function(fn, ms) {
     var $_len = arguments.length;var args = new Array($_len - 2); for(var $_i = 2; $_i < $_len; ++$_i) {args[$_i - 2] = arguments[$_i];}
-    global.setTimeout(function() {
+    global.setTimeout(function(){
         fn.apply(void 0, args);
-    }, time);
+    }, ms);
 };
-
-var pass = {};
-global.setTimeout( function(_) {
-    if(_ === pass) {
-        setTimeout = global.setTimeout;
-    }
-}, 1, pass);
 
 module.exports = function(Promise, INTERNAL) {
-    var util = require("./util.js");
-    var errors = require("./errors.js");
-    var apiRejection = require("./errors_api_rejection")(Promise);
-    var TimeoutError = Promise.TimeoutError;
+var util = require("./util.js");
+var errors = require("./errors.js");
+var apiRejection = require("./errors_api_rejection")(Promise);
+var TimeoutError = Promise.TimeoutError;
 
-    var afterTimeout = function Promise$_afterTimeout(promise, message, ms) {
-        if (!promise.isPending()) return;
-        if (typeof message !== "string") {
-            message = "operation timed out after" + " " + ms + " ms"
+var afterTimeout = function Promise$_afterTimeout(promise, message, ms) {
+    if (!promise.isPending()) return;
+    if (typeof message !== "string") {
+        message = "operation timed out after" + " " + ms + " ms"
+    }
+    var err = new TimeoutError(message);
+    errors.markAsOriginatingFromRejection(err);
+    promise._attachExtraTrace(err);
+    promise._rejectUnchecked(err);
+};
+
+var afterDelay = function Promise$_afterDelay(value, promise) {
+    promise._fulfill(value);
+};
+
+var delay = Promise.delay = function Promise$Delay(value, ms) {
+    if (ms === void 0) {
+        ms = value;
+        value = void 0;
+    }
+    ms = +ms;
+    var maybePromise = Promise._cast(value, void 0);
+    var promise = new Promise(INTERNAL);
+
+    if (maybePromise instanceof Promise) {
+        if (maybePromise._isBound()) {
+            promise._setBoundTo(maybePromise._boundTo);
         }
-        var err = new TimeoutError(message);
-        errors.markAsOriginatingFromRejection(err);
-        promise._attachExtraTrace(err);
-        promise._rejectUnchecked(err);
-    };
-
-    var afterDelay = function Promise$_afterDelay(value, promise) {
-        promise._fulfill(value);
-    };
-
-    Promise.delay = function Promise$Delay(value, ms, caller) {
-        if (ms === void 0) {
-            ms = value;
-            value = void 0;
+        if (maybePromise._cancellable()) {
+            promise._setCancellable();
+            promise._cancellationParent = maybePromise;
         }
-        ms = +ms;
-        if (typeof caller !== "function") {
-            caller = Promise.delay;
-        }
-        var maybePromise = Promise._cast(value, caller, void 0);
-        var promise = new Promise(INTERNAL);
+        promise._setTrace(maybePromise);
+        promise._follow(maybePromise);
+        return promise.then(function(value) {
+            return Promise.delay(value, ms);
+        });
+    }
+    else {
+        promise._setTrace(void 0);
+        setTimeout(afterDelay, ms, value, promise);
+    }
+    return promise;
+};
 
-        if (Promise.is(maybePromise)) {
-            if (maybePromise._isBound()) {
-                promise._setBoundTo(maybePromise._boundTo);
-            }
-            if (maybePromise._cancellable()) {
-                promise._setCancellable();
-                promise._cancellationParent = maybePromise;
-            }
-            promise._setTrace(caller, maybePromise);
-            promise._follow(maybePromise);
-            return promise.then(function(value) {
-                return Promise.delay(value, ms);
-            });
-        }
-        else {
-            promise._setTrace(caller, void 0);
-            setTimeout(afterDelay, ms, value, promise);
-        }
-        return promise;
-    };
+Promise.prototype.delay = function Promise$delay(ms) {
+    return delay(this, ms);
+};
 
-    Promise.prototype.delay = function Promise$delay(ms) {
-        return Promise.delay(this, ms, this.delay);
-    };
+Promise.prototype.timeout = function Promise$timeout(ms, message) {
+    ms = +ms;
 
-    Promise.prototype.timeout = function Promise$timeout(ms, message) {
-        ms = +ms;
+    var ret = new Promise(INTERNAL);
+    ret._setTrace(this);
 
-        var ret = new Promise(INTERNAL);
-        ret._setTrace(this.timeout, this);
-
-        if (this._isBound()) ret._setBoundTo(this._boundTo);
-        if (this._cancellable()) {
-            ret._setCancellable();
-            ret._cancellationParent = this;
-        }
-        ret._follow(this);
-        setTimeout(afterTimeout, ms, ret, message, ms);
-        return ret;
-    };
+    if (this._isBound()) ret._setBoundTo(this._boundTo);
+    if (this._cancellable()) {
+        ret._setCancellable();
+        ret._cancellationParent = this;
+    }
+    ret._follow(this);
+    setTimeout(afterTimeout, ms, ret, message, ms);
+    return ret;
+};
 
 };
 
-},{"./errors.js":9,"./errors_api_rejection":10,"./global.js":15,"./util.js":38}],38:[function(require,module,exports){
+},{"./errors.js":9,"./errors_api_rejection":10,"./global.js":15,"./util.js":37}],37:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -5094,9 +5016,9 @@ var ret = {
 
 module.exports = ret;
 
-},{"./es5.js":11,"./global.js":15}],39:[function(require,module,exports){
+},{"./es5.js":11,"./global.js":15}],38:[function(require,module,exports){
 
-},{}],40:[function(require,module,exports){
+},{}],39:[function(require,module,exports){
 
 
 //
@@ -5314,7 +5236,7 @@ if (typeof Object.getOwnPropertyDescriptor === 'function') {
   exports.getOwnPropertyDescriptor = valueObject;
 }
 
-},{}],41:[function(require,module,exports){
+},{}],40:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5631,7 +5553,7 @@ assert.doesNotThrow = function(block, /*optional*/message) {
 };
 
 assert.ifError = function(err) { if (err) {throw err;}};
-},{"_shims":40,"util":46}],42:[function(require,module,exports){
+},{"_shims":39,"util":45}],41:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -5912,7 +5834,7 @@ EventEmitter.listenerCount = function(emitter, type) {
     ret = emitter._events[type].length;
   return ret;
 };
-},{"util":46}],43:[function(require,module,exports){
+},{"util":45}],42:[function(require,module,exports){
 var process=require("__browserify_process");// Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6123,7 +6045,7 @@ exports.extname = function(path) {
   return splitPath(path)[3];
 };
 
-},{"__browserify_process":51,"_shims":40,"util":46}],44:[function(require,module,exports){
+},{"__browserify_process":50,"_shims":39,"util":45}],43:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -6334,7 +6256,7 @@ QueryString.parse = QueryString.decode = function(qs, sep, eq, options) {
 
   return obj;
 };
-},{"_shims":40,"buffer":48,"util":46}],45:[function(require,module,exports){
+},{"_shims":39,"buffer":47,"util":45}],44:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7029,7 +6951,7 @@ Url.prototype.parseHost = function() {
   }
   if (host) this.hostname = host;
 };
-},{"_shims":40,"querystring":44,"util":46}],46:[function(require,module,exports){
+},{"_shims":39,"querystring":43,"util":45}],45:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -7574,7 +7496,7 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-},{"_shims":40}],47:[function(require,module,exports){
+},{"_shims":39}],46:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
       eLen = nBytes * 8 - mLen - 1,
@@ -7660,7 +7582,7 @@ exports.writeIEEE754 = function(buffer, value, offset, isBE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],48:[function(require,module,exports){
+},{}],47:[function(require,module,exports){
 var assert;
 exports.Buffer = Buffer;
 exports.SlowBuffer = Buffer;
@@ -8786,7 +8708,7 @@ Buffer.prototype.writeDoubleBE = function(value, offset, noAssert) {
   writeDouble(this, value, offset, true, noAssert);
 };
 
-},{"./buffer_ieee754":47,"assert":41,"base64-js":49}],49:[function(require,module,exports){
+},{"./buffer_ieee754":46,"assert":40,"base64-js":48}],48:[function(require,module,exports){
 (function (exports) {
 	'use strict';
 
@@ -8872,7 +8794,7 @@ Buffer.prototype.writeDoubleBE = function(value, offset, noAssert) {
 	module.exports.fromByteArray = uint8ToBase64;
 }());
 
-},{}],50:[function(require,module,exports){
+},{}],49:[function(require,module,exports){
 require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
@@ -11252,7 +11174,7 @@ function hasOwnProperty(obj, prop) {
 },{"_shims":5}]},{},[])
 ;;module.exports=require("buffer-browserify")
 
-},{}],51:[function(require,module,exports){
+},{}],50:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -11307,7 +11229,7 @@ process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
 
-},{}],52:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11349,7 +11271,7 @@ module.exports = {
   'zipObject': require('./arrays/zipObject')
 };
 
-},{"./arrays/compact":53,"./arrays/difference":54,"./arrays/findIndex":55,"./arrays/findLastIndex":56,"./arrays/first":57,"./arrays/flatten":58,"./arrays/indexOf":59,"./arrays/initial":60,"./arrays/intersection":61,"./arrays/last":62,"./arrays/lastIndexOf":63,"./arrays/pull":64,"./arrays/range":65,"./arrays/remove":66,"./arrays/rest":67,"./arrays/sortedIndex":68,"./arrays/union":69,"./arrays/uniq":70,"./arrays/without":71,"./arrays/xor":72,"./arrays/zip":73,"./arrays/zipObject":74}],53:[function(require,module,exports){
+},{"./arrays/compact":52,"./arrays/difference":53,"./arrays/findIndex":54,"./arrays/findLastIndex":55,"./arrays/first":56,"./arrays/flatten":57,"./arrays/indexOf":58,"./arrays/initial":59,"./arrays/intersection":60,"./arrays/last":61,"./arrays/lastIndexOf":62,"./arrays/pull":63,"./arrays/range":64,"./arrays/remove":65,"./arrays/rest":66,"./arrays/sortedIndex":67,"./arrays/union":68,"./arrays/uniq":69,"./arrays/without":70,"./arrays/xor":71,"./arrays/zip":72,"./arrays/zipObject":73}],52:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11389,7 +11311,7 @@ function compact(array) {
 
 module.exports = compact;
 
-},{}],54:[function(require,module,exports){
+},{}],53:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11422,7 +11344,7 @@ function difference(array) {
 
 module.exports = difference;
 
-},{"../internals/baseDifference":132,"../internals/baseFlatten":133}],55:[function(require,module,exports){
+},{"../internals/baseDifference":131,"../internals/baseFlatten":132}],54:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11489,7 +11411,7 @@ function findIndex(array, callback, thisArg) {
 
 module.exports = findIndex;
 
-},{"../functions/createCallback":114}],56:[function(require,module,exports){
+},{"../functions/createCallback":113}],55:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11554,7 +11476,7 @@ function findLastIndex(array, callback, thisArg) {
 
 module.exports = findLastIndex;
 
-},{"../functions/createCallback":114}],57:[function(require,module,exports){
+},{"../functions/createCallback":113}],56:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11642,7 +11564,7 @@ function first(array, callback, thisArg) {
 
 module.exports = first;
 
-},{"../functions/createCallback":114,"../internals/slice":167}],58:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/slice":166}],57:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11710,7 +11632,7 @@ function flatten(array, isShallow, callback, thisArg) {
 
 module.exports = flatten;
 
-},{"../collections/map":94,"../internals/baseFlatten":133}],59:[function(require,module,exports){
+},{"../collections/map":93,"../internals/baseFlatten":132}],58:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11762,7 +11684,7 @@ function indexOf(array, value, fromIndex) {
 
 module.exports = indexOf;
 
-},{"../internals/baseIndexOf":134,"./sortedIndex":68}],60:[function(require,module,exports){
+},{"../internals/baseIndexOf":133,"./sortedIndex":67}],59:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11846,7 +11768,7 @@ function initial(array, callback, thisArg) {
 
 module.exports = initial;
 
-},{"../functions/createCallback":114,"../internals/slice":167}],61:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/slice":166}],60:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -11931,7 +11853,7 @@ function intersection() {
 
 module.exports = intersection;
 
-},{"../internals/baseIndexOf":134,"../internals/cacheIndexOf":139,"../internals/createCache":144,"../internals/getArray":148,"../internals/largeArraySize":154,"../internals/releaseArray":162,"../internals/releaseObject":163,"../objects/isArguments":184,"../objects/isArray":185}],62:[function(require,module,exports){
+},{"../internals/baseIndexOf":133,"../internals/cacheIndexOf":138,"../internals/createCache":143,"../internals/getArray":147,"../internals/largeArraySize":153,"../internals/releaseArray":161,"../internals/releaseObject":162,"../objects/isArguments":183,"../objects/isArray":184}],61:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12017,7 +11939,7 @@ function last(array, callback, thisArg) {
 
 module.exports = last;
 
-},{"../functions/createCallback":114,"../internals/slice":167}],63:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/slice":166}],62:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12073,7 +11995,7 @@ function lastIndexOf(array, value, fromIndex) {
 
 module.exports = lastIndexOf;
 
-},{}],64:[function(require,module,exports){
+},{}],63:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12132,7 +12054,7 @@ function pull(array) {
 
 module.exports = pull;
 
-},{}],65:[function(require,module,exports){
+},{}],64:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12203,7 +12125,7 @@ function range(start, end, step) {
 
 module.exports = range;
 
-},{}],66:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12276,7 +12198,7 @@ function remove(array, callback, thisArg) {
 
 module.exports = remove;
 
-},{"../functions/createCallback":114}],67:[function(require,module,exports){
+},{"../functions/createCallback":113}],66:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12361,7 +12283,7 @@ function rest(array, callback, thisArg) {
 
 module.exports = rest;
 
-},{"../functions/createCallback":114,"../internals/slice":167}],68:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/slice":166}],67:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12440,7 +12362,7 @@ function sortedIndex(array, value, callback, thisArg) {
 
 module.exports = sortedIndex;
 
-},{"../functions/createCallback":114,"../utilities/identity":213}],69:[function(require,module,exports){
+},{"../functions/createCallback":113,"../utilities/identity":212}],68:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12472,7 +12394,7 @@ function union() {
 
 module.exports = union;
 
-},{"../internals/baseFlatten":133,"../internals/baseUniq":138}],70:[function(require,module,exports){
+},{"../internals/baseFlatten":132,"../internals/baseUniq":137}],69:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12543,7 +12465,7 @@ function uniq(array, isSorted, callback, thisArg) {
 
 module.exports = uniq;
 
-},{"../functions/createCallback":114,"../internals/baseUniq":138}],71:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/baseUniq":137}],70:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12576,7 +12498,7 @@ function without(array) {
 
 module.exports = without;
 
-},{"../internals/baseDifference":132,"../internals/slice":167}],72:[function(require,module,exports){
+},{"../internals/baseDifference":131,"../internals/slice":166}],71:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12624,7 +12546,7 @@ function xor() {
 
 module.exports = xor;
 
-},{"../internals/baseDifference":132,"../internals/baseUniq":138,"../objects/isArguments":184,"../objects/isArray":185}],73:[function(require,module,exports){
+},{"../internals/baseDifference":131,"../internals/baseUniq":137,"../objects/isArguments":183,"../objects/isArray":184}],72:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12666,7 +12588,7 @@ function zip() {
 
 module.exports = zip;
 
-},{"../collections/max":95,"../collections/pluck":97}],74:[function(require,module,exports){
+},{"../collections/max":94,"../collections/pluck":96}],73:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12716,7 +12638,7 @@ function zipObject(keys, values) {
 
 module.exports = zipObject;
 
-},{"../objects/isArray":185}],75:[function(require,module,exports){
+},{"../objects/isArray":184}],74:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12735,7 +12657,7 @@ module.exports = {
   'wrapperValueOf': require('./chaining/wrapperValueOf')
 };
 
-},{"./chaining/chain":76,"./chaining/tap":77,"./chaining/wrapperChain":78,"./chaining/wrapperToString":79,"./chaining/wrapperValueOf":80}],76:[function(require,module,exports){
+},{"./chaining/chain":75,"./chaining/tap":76,"./chaining/wrapperChain":77,"./chaining/wrapperToString":78,"./chaining/wrapperValueOf":79}],75:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12778,7 +12700,7 @@ function chain(value) {
 
 module.exports = chain;
 
-},{"../internals/lodashWrapper":155}],77:[function(require,module,exports){
+},{"../internals/lodashWrapper":154}],76:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12815,7 +12737,7 @@ function tap(value, interceptor) {
 
 module.exports = tap;
 
-},{}],78:[function(require,module,exports){
+},{}],77:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12857,7 +12779,7 @@ function wrapperChain() {
 
 module.exports = wrapperChain;
 
-},{}],79:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12885,7 +12807,7 @@ function wrapperToString() {
 
 module.exports = wrapperToString;
 
-},{}],80:[function(require,module,exports){
+},{}],79:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12916,7 +12838,7 @@ function wrapperValueOf() {
 
 module.exports = wrapperValueOf;
 
-},{"../collections/forEach":89,"../support":209}],81:[function(require,module,exports){
+},{"../collections/forEach":88,"../support":208}],80:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -12967,7 +12889,7 @@ module.exports = {
   'where': require('./collections/where')
 };
 
-},{"./collections/at":82,"./collections/contains":83,"./collections/countBy":84,"./collections/every":85,"./collections/filter":86,"./collections/find":87,"./collections/findLast":88,"./collections/forEach":89,"./collections/forEachRight":90,"./collections/groupBy":91,"./collections/indexBy":92,"./collections/invoke":93,"./collections/map":94,"./collections/max":95,"./collections/min":96,"./collections/pluck":97,"./collections/reduce":98,"./collections/reduceRight":99,"./collections/reject":100,"./collections/sample":101,"./collections/shuffle":102,"./collections/size":103,"./collections/some":104,"./collections/sortBy":105,"./collections/toArray":106,"./collections/where":107}],82:[function(require,module,exports){
+},{"./collections/at":81,"./collections/contains":82,"./collections/countBy":83,"./collections/every":84,"./collections/filter":85,"./collections/find":86,"./collections/findLast":87,"./collections/forEach":88,"./collections/forEachRight":89,"./collections/groupBy":90,"./collections/indexBy":91,"./collections/invoke":92,"./collections/map":93,"./collections/max":94,"./collections/min":95,"./collections/pluck":96,"./collections/reduce":97,"./collections/reduceRight":98,"./collections/reject":99,"./collections/sample":100,"./collections/shuffle":101,"./collections/size":102,"./collections/some":103,"./collections/sortBy":104,"./collections/toArray":105,"./collections/where":106}],81:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13015,7 +12937,7 @@ function at(collection) {
 
 module.exports = at;
 
-},{"../internals/baseFlatten":133,"../objects/isString":199}],83:[function(require,module,exports){
+},{"../internals/baseFlatten":132,"../objects/isString":198}],82:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13082,7 +13004,7 @@ function contains(collection, target, fromIndex) {
 
 module.exports = contains;
 
-},{"../internals/baseIndexOf":134,"../objects/forOwn":179,"../objects/isArray":185,"../objects/isString":199}],84:[function(require,module,exports){
+},{"../internals/baseIndexOf":133,"../objects/forOwn":178,"../objects/isArray":184,"../objects/isString":198}],83:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13139,7 +13061,7 @@ var countBy = createAggregator(function(result, value, key) {
 
 module.exports = countBy;
 
-},{"../internals/createAggregator":143}],85:[function(require,module,exports){
+},{"../internals/createAggregator":142}],84:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13215,7 +13137,7 @@ function every(collection, callback, thisArg) {
 
 module.exports = every;
 
-},{"../functions/createCallback":114,"../objects/forOwn":179}],86:[function(require,module,exports){
+},{"../functions/createCallback":113,"../objects/forOwn":178}],85:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13293,7 +13215,7 @@ function filter(collection, callback, thisArg) {
 
 module.exports = filter;
 
-},{"../functions/createCallback":114,"../objects/forOwn":179}],87:[function(require,module,exports){
+},{"../functions/createCallback":113,"../objects/forOwn":178}],86:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13375,7 +13297,7 @@ function find(collection, callback, thisArg) {
 
 module.exports = find;
 
-},{"../functions/createCallback":114,"../objects/forOwn":179}],88:[function(require,module,exports){
+},{"../functions/createCallback":113,"../objects/forOwn":178}],87:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13421,7 +13343,7 @@ function findLast(collection, callback, thisArg) {
 
 module.exports = findLast;
 
-},{"../functions/createCallback":114,"./forEachRight":90}],89:[function(require,module,exports){
+},{"../functions/createCallback":113,"./forEachRight":89}],88:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13478,7 +13400,7 @@ function forEach(collection, callback, thisArg) {
 
 module.exports = forEach;
 
-},{"../internals/baseCreateCallback":130,"../objects/forOwn":179}],90:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../objects/forOwn":178}],89:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13532,7 +13454,7 @@ function forEachRight(collection, callback, thisArg) {
 
 module.exports = forEachRight;
 
-},{"../internals/baseCreateCallback":130,"../objects/forOwn":179,"../objects/isArray":185,"../objects/isString":199,"../objects/keys":201}],91:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../objects/forOwn":178,"../objects/isArray":184,"../objects/isString":198,"../objects/keys":200}],90:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13590,7 +13512,7 @@ var groupBy = createAggregator(function(result, value, key) {
 
 module.exports = groupBy;
 
-},{"../internals/createAggregator":143}],92:[function(require,module,exports){
+},{"../internals/createAggregator":142}],91:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13646,7 +13568,7 @@ var indexBy = createAggregator(function(result, value, key) {
 
 module.exports = indexBy;
 
-},{"../internals/createAggregator":143}],93:[function(require,module,exports){
+},{"../internals/createAggregator":142}],92:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13695,7 +13617,7 @@ function invoke(collection, methodName) {
 
 module.exports = invoke;
 
-},{"../internals/slice":167,"./forEach":89}],94:[function(require,module,exports){
+},{"../internals/slice":166,"./forEach":88}],93:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13767,7 +13689,7 @@ function map(collection, callback, thisArg) {
 
 module.exports = map;
 
-},{"../functions/createCallback":114,"../objects/forOwn":179}],95:[function(require,module,exports){
+},{"../functions/createCallback":113,"../objects/forOwn":178}],94:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13860,7 +13782,7 @@ function max(collection, callback, thisArg) {
 
 module.exports = max;
 
-},{"../functions/createCallback":114,"../internals/charAtCallback":141,"../objects/forOwn":179,"../objects/isArray":185,"../objects/isString":199,"./forEach":89}],96:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/charAtCallback":140,"../objects/forOwn":178,"../objects/isArray":184,"../objects/isString":198,"./forEach":88}],95:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13953,7 +13875,7 @@ function min(collection, callback, thisArg) {
 
 module.exports = min;
 
-},{"../functions/createCallback":114,"../internals/charAtCallback":141,"../objects/forOwn":179,"../objects/isArray":185,"../objects/isString":199,"./forEach":89}],97:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/charAtCallback":140,"../objects/forOwn":178,"../objects/isArray":184,"../objects/isString":198,"./forEach":88}],96:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -13988,7 +13910,7 @@ var pluck = map;
 
 module.exports = pluck;
 
-},{"./map":94}],98:[function(require,module,exports){
+},{"./map":93}],97:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14057,7 +13979,7 @@ function reduce(collection, callback, accumulator, thisArg) {
 
 module.exports = reduce;
 
-},{"../functions/createCallback":114,"../objects/forOwn":179}],99:[function(require,module,exports){
+},{"../functions/createCallback":113,"../objects/forOwn":178}],98:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14101,7 +14023,7 @@ function reduceRight(collection, callback, accumulator, thisArg) {
 
 module.exports = reduceRight;
 
-},{"../functions/createCallback":114,"./forEachRight":90}],100:[function(require,module,exports){
+},{"../functions/createCallback":113,"./forEachRight":89}],99:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14160,7 +14082,7 @@ function reject(collection, callback, thisArg) {
 
 module.exports = reject;
 
-},{"../functions/createCallback":114,"./filter":86}],101:[function(require,module,exports){
+},{"../functions/createCallback":113,"./filter":85}],100:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14211,7 +14133,7 @@ function sample(collection, n, guard) {
 
 module.exports = sample;
 
-},{"../internals/baseRandom":137,"../objects/isString":199,"../objects/values":208,"./shuffle":102}],102:[function(require,module,exports){
+},{"../internals/baseRandom":136,"../objects/isString":198,"../objects/values":207,"./shuffle":101}],101:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14252,7 +14174,7 @@ function shuffle(collection) {
 
 module.exports = shuffle;
 
-},{"../internals/baseRandom":137,"./forEach":89}],103:[function(require,module,exports){
+},{"../internals/baseRandom":136,"./forEach":88}],102:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14290,7 +14212,7 @@ function size(collection) {
 
 module.exports = size;
 
-},{"../objects/keys":201}],104:[function(require,module,exports){
+},{"../objects/keys":200}],103:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14368,7 +14290,7 @@ function some(collection, callback, thisArg) {
 
 module.exports = some;
 
-},{"../functions/createCallback":114,"../objects/forOwn":179,"../objects/isArray":185}],105:[function(require,module,exports){
+},{"../functions/createCallback":113,"../objects/forOwn":178,"../objects/isArray":184}],104:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14471,7 +14393,7 @@ function sortBy(collection, callback, thisArg) {
 
 module.exports = sortBy;
 
-},{"../functions/createCallback":114,"../internals/compareAscending":142,"../internals/getArray":148,"../internals/getObject":149,"../internals/releaseArray":162,"../internals/releaseObject":163,"../objects/isArray":185,"./forEach":89,"./map":94}],106:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/compareAscending":141,"../internals/getArray":147,"../internals/getObject":148,"../internals/releaseArray":161,"../internals/releaseObject":162,"../objects/isArray":184,"./forEach":88,"./map":93}],105:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14506,7 +14428,7 @@ function toArray(collection) {
 
 module.exports = toArray;
 
-},{"../internals/slice":167,"../objects/isString":199,"../objects/values":208}],107:[function(require,module,exports){
+},{"../internals/slice":166,"../objects/isString":198,"../objects/values":207}],106:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14546,7 +14468,7 @@ var where = filter;
 
 module.exports = where;
 
-},{"./filter":86}],108:[function(require,module,exports){
+},{"./filter":85}],107:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14575,7 +14497,7 @@ module.exports = {
   'wrap': require('./functions/wrap')
 };
 
-},{"./functions/after":109,"./functions/bind":110,"./functions/bindAll":111,"./functions/bindKey":112,"./functions/compose":113,"./functions/createCallback":114,"./functions/curry":115,"./functions/debounce":116,"./functions/defer":117,"./functions/delay":118,"./functions/memoize":119,"./functions/once":120,"./functions/partial":121,"./functions/partialRight":122,"./functions/throttle":123,"./functions/wrap":124}],109:[function(require,module,exports){
+},{"./functions/after":108,"./functions/bind":109,"./functions/bindAll":110,"./functions/bindKey":111,"./functions/compose":112,"./functions/createCallback":113,"./functions/curry":114,"./functions/debounce":115,"./functions/defer":116,"./functions/delay":117,"./functions/memoize":118,"./functions/once":119,"./functions/partial":120,"./functions/partialRight":121,"./functions/throttle":122,"./functions/wrap":123}],108:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14623,7 +14545,7 @@ function after(n, func) {
 
 module.exports = after;
 
-},{"../objects/isFunction":192}],110:[function(require,module,exports){
+},{"../objects/isFunction":191}],109:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14665,7 +14587,7 @@ function bind(func, thisArg) {
 
 module.exports = bind;
 
-},{"../internals/createWrapper":145,"../internals/slice":167}],111:[function(require,module,exports){
+},{"../internals/createWrapper":144,"../internals/slice":166}],110:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14716,7 +14638,7 @@ function bindAll(object) {
 
 module.exports = bindAll;
 
-},{"../internals/baseFlatten":133,"../internals/createWrapper":145,"../objects/functions":181}],112:[function(require,module,exports){
+},{"../internals/baseFlatten":132,"../internals/createWrapper":144,"../objects/functions":180}],111:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14770,7 +14692,7 @@ function bindKey(object, key) {
 
 module.exports = bindKey;
 
-},{"../internals/createWrapper":145,"../internals/slice":167}],113:[function(require,module,exports){
+},{"../internals/createWrapper":144,"../internals/slice":166}],112:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14833,7 +14755,7 @@ function compose() {
 
 module.exports = compose;
 
-},{"../objects/isFunction":192}],114:[function(require,module,exports){
+},{"../objects/isFunction":191}],113:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14916,7 +14838,7 @@ function createCallback(func, thisArg, argCount) {
 
 module.exports = createCallback;
 
-},{"../internals/baseCreateCallback":130,"../internals/baseIsEqual":135,"../objects/isObject":196,"../objects/keys":201,"../utilities/property":219}],115:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../internals/baseIsEqual":134,"../objects/isObject":195,"../objects/keys":200,"../utilities/property":218}],114:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -14962,7 +14884,7 @@ function curry(func, arity) {
 
 module.exports = curry;
 
-},{"../internals/createWrapper":145}],116:[function(require,module,exports){
+},{"../internals/createWrapper":144}],115:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15120,7 +15042,7 @@ function debounce(func, wait, options) {
 
 module.exports = debounce;
 
-},{"../objects/isFunction":192,"../objects/isObject":196,"../utilities/now":217}],117:[function(require,module,exports){
+},{"../objects/isFunction":191,"../objects/isObject":195,"../utilities/now":216}],116:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15157,7 +15079,7 @@ function defer(func) {
 
 module.exports = defer;
 
-},{"../internals/slice":167,"../objects/isFunction":192}],118:[function(require,module,exports){
+},{"../internals/slice":166,"../objects/isFunction":191}],117:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15195,7 +15117,7 @@ function delay(func, wait) {
 
 module.exports = delay;
 
-},{"../internals/slice":167,"../objects/isFunction":192}],119:[function(require,module,exports){
+},{"../internals/slice":166,"../objects/isFunction":191}],118:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15268,7 +15190,7 @@ function memoize(func, resolver) {
 
 module.exports = memoize;
 
-},{"../internals/keyPrefix":153,"../objects/isFunction":192}],120:[function(require,module,exports){
+},{"../internals/keyPrefix":152,"../objects/isFunction":191}],119:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15318,7 +15240,7 @@ function once(func) {
 
 module.exports = once;
 
-},{"../objects/isFunction":192}],121:[function(require,module,exports){
+},{"../objects/isFunction":191}],120:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15354,7 +15276,7 @@ function partial(func) {
 
 module.exports = partial;
 
-},{"../internals/createWrapper":145,"../internals/slice":167}],122:[function(require,module,exports){
+},{"../internals/createWrapper":144,"../internals/slice":166}],121:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15399,7 +15321,7 @@ function partialRight(func) {
 
 module.exports = partialRight;
 
-},{"../internals/createWrapper":145,"../internals/slice":167}],123:[function(require,module,exports){
+},{"../internals/createWrapper":144,"../internals/slice":166}],122:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15472,7 +15394,7 @@ function throttle(func, wait, options) {
 
 module.exports = throttle;
 
-},{"../objects/isFunction":192,"../objects/isObject":196,"./debounce":116}],124:[function(require,module,exports){
+},{"../objects/isFunction":191,"../objects/isObject":195,"./debounce":115}],123:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15510,7 +15432,7 @@ function wrap(value, wrapper) {
 
 module.exports = wrap;
 
-},{"../internals/createWrapper":145}],125:[function(require,module,exports){
+},{"../internals/createWrapper":144}],124:[function(require,module,exports){
 /**
  * @license
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
@@ -15866,7 +15788,7 @@ lodash.support = support;
 (lodash.templateSettings = utilities.templateSettings).imports._ = lodash;
 module.exports = lodash;
 
-},{"./arrays":52,"./chaining":75,"./collections":81,"./collections/forEach":89,"./functions":108,"./internals/lodashWrapper":155,"./objects":169,"./objects/forOwn":179,"./objects/isArray":185,"./support":209,"./utilities":210,"./utilities/mixin":214,"./utilities/templateSettings":223}],126:[function(require,module,exports){
+},{"./arrays":51,"./chaining":74,"./collections":80,"./collections/forEach":88,"./functions":107,"./internals/lodashWrapper":154,"./objects":168,"./objects/forOwn":178,"./objects/isArray":184,"./support":208,"./utilities":209,"./utilities/mixin":213,"./utilities/templateSettings":222}],125:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15881,7 +15803,7 @@ var arrayPool = [];
 
 module.exports = arrayPool;
 
-},{}],127:[function(require,module,exports){
+},{}],126:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -15945,7 +15867,7 @@ function baseBind(bindData) {
 
 module.exports = baseBind;
 
-},{"../objects/isObject":196,"./baseCreate":129,"./setBindData":164,"./slice":167}],128:[function(require,module,exports){
+},{"../objects/isObject":195,"./baseCreate":128,"./setBindData":163,"./slice":166}],127:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16099,7 +16021,7 @@ function baseClone(value, isDeep, callback, stackA, stackB) {
 
 module.exports = baseClone;
 
-},{"../collections/forEach":89,"../objects/assign":170,"../objects/forOwn":179,"../objects/isArray":185,"../objects/isObject":196,"./getArray":148,"./releaseArray":162,"./slice":167}],129:[function(require,module,exports){
+},{"../collections/forEach":88,"../objects/assign":169,"../objects/forOwn":178,"../objects/isArray":184,"../objects/isObject":195,"./getArray":147,"./releaseArray":161,"./slice":166}],128:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16143,7 +16065,7 @@ if (!nativeCreate) {
 
 module.exports = baseCreate;
 
-},{"../objects/isObject":196,"../utilities/noop":216,"./isNative":152}],130:[function(require,module,exports){
+},{"../objects/isObject":195,"../utilities/noop":215,"./isNative":151}],129:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16225,7 +16147,7 @@ function baseCreateCallback(func, thisArg, argCount) {
 
 module.exports = baseCreateCallback;
 
-},{"../functions/bind":110,"../support":209,"../utilities/identity":213,"./setBindData":164}],131:[function(require,module,exports){
+},{"../functions/bind":109,"../support":208,"../utilities/identity":212,"./setBindData":163}],130:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16305,7 +16227,7 @@ function baseCreateWrapper(bindData) {
 
 module.exports = baseCreateWrapper;
 
-},{"../objects/isObject":196,"./baseCreate":129,"./setBindData":164,"./slice":167}],132:[function(require,module,exports){
+},{"../objects/isObject":195,"./baseCreate":128,"./setBindData":163,"./slice":166}],131:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16359,7 +16281,7 @@ function baseDifference(array, values) {
 
 module.exports = baseDifference;
 
-},{"./baseIndexOf":134,"./cacheIndexOf":139,"./createCache":144,"./largeArraySize":154,"./releaseObject":163}],133:[function(require,module,exports){
+},{"./baseIndexOf":133,"./cacheIndexOf":138,"./createCache":143,"./largeArraySize":153,"./releaseObject":162}],132:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16413,7 +16335,7 @@ function baseFlatten(array, isShallow, isStrict, fromIndex) {
 
 module.exports = baseFlatten;
 
-},{"../objects/isArguments":184,"../objects/isArray":185}],134:[function(require,module,exports){
+},{"../objects/isArguments":183,"../objects/isArray":184}],133:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16447,7 +16369,7 @@ function baseIndexOf(array, value, fromIndex) {
 
 module.exports = baseIndexOf;
 
-},{}],135:[function(require,module,exports){
+},{}],134:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16658,7 +16580,7 @@ function baseIsEqual(a, b, callback, isWhere, stackA, stackB) {
 
 module.exports = baseIsEqual;
 
-},{"../objects/forIn":177,"../objects/isFunction":192,"./getArray":148,"./objectTypes":158,"./releaseArray":162}],136:[function(require,module,exports){
+},{"../objects/forIn":176,"../objects/isFunction":191,"./getArray":147,"./objectTypes":157,"./releaseArray":161}],135:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16739,7 +16661,7 @@ function baseMerge(object, source, callback, stackA, stackB) {
 
 module.exports = baseMerge;
 
-},{"../collections/forEach":89,"../objects/forOwn":179,"../objects/isArray":185,"../objects/isPlainObject":197}],137:[function(require,module,exports){
+},{"../collections/forEach":88,"../objects/forOwn":178,"../objects/isArray":184,"../objects/isPlainObject":196}],136:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16770,7 +16692,7 @@ function baseRandom(min, max) {
 
 module.exports = baseRandom;
 
-},{}],138:[function(require,module,exports){
+},{}],137:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16836,7 +16758,7 @@ function baseUniq(array, isSorted, callback) {
 
 module.exports = baseUniq;
 
-},{"./baseIndexOf":134,"./cacheIndexOf":139,"./createCache":144,"./getArray":148,"./largeArraySize":154,"./releaseArray":162,"./releaseObject":163}],139:[function(require,module,exports){
+},{"./baseIndexOf":133,"./cacheIndexOf":138,"./createCache":143,"./getArray":147,"./largeArraySize":153,"./releaseArray":161,"./releaseObject":162}],138:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16877,7 +16799,7 @@ function cacheIndexOf(cache, value) {
 
 module.exports = cacheIndexOf;
 
-},{"./baseIndexOf":134,"./keyPrefix":153}],140:[function(require,module,exports){
+},{"./baseIndexOf":133,"./keyPrefix":152}],139:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16917,7 +16839,7 @@ function cachePush(value) {
 
 module.exports = cachePush;
 
-},{"./keyPrefix":153}],141:[function(require,module,exports){
+},{"./keyPrefix":152}],140:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16941,7 +16863,7 @@ function charAtCallback(value) {
 
 module.exports = charAtCallback;
 
-},{}],142:[function(require,module,exports){
+},{}],141:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -16990,7 +16912,7 @@ function compareAscending(a, b) {
 
 module.exports = compareAscending;
 
-},{}],143:[function(require,module,exports){
+},{}],142:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17037,7 +16959,7 @@ function createAggregator(setter) {
 
 module.exports = createAggregator;
 
-},{"../functions/createCallback":114,"../objects/forOwn":179,"../objects/isArray":185}],144:[function(require,module,exports){
+},{"../functions/createCallback":113,"../objects/forOwn":178,"../objects/isArray":184}],143:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17084,7 +17006,7 @@ function createCache(array) {
 
 module.exports = createCache;
 
-},{"./cachePush":140,"./getObject":149,"./releaseObject":163}],145:[function(require,module,exports){
+},{"./cachePush":139,"./getObject":148,"./releaseObject":162}],144:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17192,7 +17114,7 @@ function createWrapper(func, bitmask, partialArgs, partialRightArgs, thisArg, ar
 
 module.exports = createWrapper;
 
-},{"../objects/isFunction":192,"./baseBind":127,"./baseCreateWrapper":131,"./slice":167}],146:[function(require,module,exports){
+},{"../objects/isFunction":191,"./baseBind":126,"./baseCreateWrapper":130,"./slice":166}],145:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17216,7 +17138,7 @@ function escapeHtmlChar(match) {
 
 module.exports = escapeHtmlChar;
 
-},{"./htmlEscapes":150}],147:[function(require,module,exports){
+},{"./htmlEscapes":149}],146:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17251,7 +17173,7 @@ function escapeStringChar(match) {
 
 module.exports = escapeStringChar;
 
-},{}],148:[function(require,module,exports){
+},{}],147:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17274,7 +17196,7 @@ function getArray() {
 
 module.exports = getArray;
 
-},{"./arrayPool":126}],149:[function(require,module,exports){
+},{"./arrayPool":125}],148:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17311,7 +17233,7 @@ function getObject() {
 
 module.exports = getObject;
 
-},{"./objectPool":157}],150:[function(require,module,exports){
+},{"./objectPool":156}],149:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17339,7 +17261,7 @@ var htmlEscapes = {
 
 module.exports = htmlEscapes;
 
-},{}],151:[function(require,module,exports){
+},{}],150:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17356,7 +17278,7 @@ var htmlUnescapes = invert(htmlEscapes);
 
 module.exports = htmlUnescapes;
 
-},{"../objects/invert":183,"./htmlEscapes":150}],152:[function(require,module,exports){
+},{"../objects/invert":182,"./htmlEscapes":149}],151:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17392,7 +17314,7 @@ function isNative(value) {
 
 module.exports = isNative;
 
-},{}],153:[function(require,module,exports){
+},{}],152:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17407,7 +17329,7 @@ var keyPrefix = +new Date + '';
 
 module.exports = keyPrefix;
 
-},{}],154:[function(require,module,exports){
+},{}],153:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17422,7 +17344,7 @@ var largeArraySize = 75;
 
 module.exports = largeArraySize;
 
-},{}],155:[function(require,module,exports){
+},{}],154:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17447,7 +17369,7 @@ function lodashWrapper(value, chainAll) {
 
 module.exports = lodashWrapper;
 
-},{}],156:[function(require,module,exports){
+},{}],155:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17462,7 +17384,7 @@ var maxPoolSize = 40;
 
 module.exports = maxPoolSize;
 
-},{}],157:[function(require,module,exports){
+},{}],156:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17477,7 +17399,7 @@ var objectPool = [];
 
 module.exports = objectPool;
 
-},{}],158:[function(require,module,exports){
+},{}],157:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17499,7 +17421,7 @@ var objectTypes = {
 
 module.exports = objectTypes;
 
-},{}],159:[function(require,module,exports){
+},{}],158:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17516,7 +17438,7 @@ var reEscapedHtml = RegExp('(' + keys(htmlUnescapes).join('|') + ')', 'g');
 
 module.exports = reEscapedHtml;
 
-},{"../objects/keys":201,"./htmlUnescapes":151}],160:[function(require,module,exports){
+},{"../objects/keys":200,"./htmlUnescapes":150}],159:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17531,7 +17453,7 @@ var reInterpolate = /<%=([\s\S]+?)%>/g;
 
 module.exports = reInterpolate;
 
-},{}],161:[function(require,module,exports){
+},{}],160:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17548,7 +17470,7 @@ var reUnescapedHtml = RegExp('[' + keys(htmlEscapes).join('') + ']', 'g');
 
 module.exports = reUnescapedHtml;
 
-},{"../objects/keys":201,"./htmlEscapes":150}],162:[function(require,module,exports){
+},{"../objects/keys":200,"./htmlEscapes":149}],161:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17575,7 +17497,7 @@ function releaseArray(array) {
 
 module.exports = releaseArray;
 
-},{"./arrayPool":126,"./maxPoolSize":156}],163:[function(require,module,exports){
+},{"./arrayPool":125,"./maxPoolSize":155}],162:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17606,7 +17528,7 @@ function releaseObject(object) {
 
 module.exports = releaseObject;
 
-},{"./maxPoolSize":156,"./objectPool":157}],164:[function(require,module,exports){
+},{"./maxPoolSize":155,"./objectPool":156}],163:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17651,7 +17573,7 @@ var setBindData = !defineProperty ? noop : function(func, value) {
 
 module.exports = setBindData;
 
-},{"../utilities/noop":216,"./isNative":152}],165:[function(require,module,exports){
+},{"../utilities/noop":215,"./isNative":151}],164:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17705,7 +17627,7 @@ function shimIsPlainObject(value) {
 
 module.exports = shimIsPlainObject;
 
-},{"../objects/forIn":177,"../objects/isFunction":192}],166:[function(require,module,exports){
+},{"../objects/forIn":176,"../objects/isFunction":191}],165:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17745,7 +17667,7 @@ var shimKeys = function(object) {
 
 module.exports = shimKeys;
 
-},{"./objectTypes":158}],167:[function(require,module,exports){
+},{"./objectTypes":157}],166:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17785,7 +17707,7 @@ function slice(array, start, end) {
 
 module.exports = slice;
 
-},{}],168:[function(require,module,exports){
+},{}],167:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17809,7 +17731,7 @@ function unescapeHtmlChar(match) {
 
 module.exports = unescapeHtmlChar;
 
-},{"./htmlUnescapes":151}],169:[function(require,module,exports){
+},{"./htmlUnescapes":150}],168:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17863,7 +17785,7 @@ module.exports = {
   'values': require('./objects/values')
 };
 
-},{"./objects/assign":170,"./objects/clone":171,"./objects/cloneDeep":172,"./objects/create":173,"./objects/defaults":174,"./objects/findKey":175,"./objects/findLastKey":176,"./objects/forIn":177,"./objects/forInRight":178,"./objects/forOwn":179,"./objects/forOwnRight":180,"./objects/functions":181,"./objects/has":182,"./objects/invert":183,"./objects/isArguments":184,"./objects/isArray":185,"./objects/isBoolean":186,"./objects/isDate":187,"./objects/isElement":188,"./objects/isEmpty":189,"./objects/isEqual":190,"./objects/isFinite":191,"./objects/isFunction":192,"./objects/isNaN":193,"./objects/isNull":194,"./objects/isNumber":195,"./objects/isObject":196,"./objects/isPlainObject":197,"./objects/isRegExp":198,"./objects/isString":199,"./objects/isUndefined":200,"./objects/keys":201,"./objects/mapValues":202,"./objects/merge":203,"./objects/omit":204,"./objects/pairs":205,"./objects/pick":206,"./objects/transform":207,"./objects/values":208}],170:[function(require,module,exports){
+},{"./objects/assign":169,"./objects/clone":170,"./objects/cloneDeep":171,"./objects/create":172,"./objects/defaults":173,"./objects/findKey":174,"./objects/findLastKey":175,"./objects/forIn":176,"./objects/forInRight":177,"./objects/forOwn":178,"./objects/forOwnRight":179,"./objects/functions":180,"./objects/has":181,"./objects/invert":182,"./objects/isArguments":183,"./objects/isArray":184,"./objects/isBoolean":185,"./objects/isDate":186,"./objects/isElement":187,"./objects/isEmpty":188,"./objects/isEqual":189,"./objects/isFinite":190,"./objects/isFunction":191,"./objects/isNaN":192,"./objects/isNull":193,"./objects/isNumber":194,"./objects/isObject":195,"./objects/isPlainObject":196,"./objects/isRegExp":197,"./objects/isString":198,"./objects/isUndefined":199,"./objects/keys":200,"./objects/mapValues":201,"./objects/merge":202,"./objects/omit":203,"./objects/pairs":204,"./objects/pick":205,"./objects/transform":206,"./objects/values":207}],169:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -17935,7 +17857,7 @@ var assign = function(object, source, guard) {
 
 module.exports = assign;
 
-},{"../internals/baseCreateCallback":130,"../internals/objectTypes":158,"./keys":201}],171:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../internals/objectTypes":157,"./keys":200}],170:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18000,7 +17922,7 @@ function clone(value, isDeep, callback, thisArg) {
 
 module.exports = clone;
 
-},{"../internals/baseClone":128,"../internals/baseCreateCallback":130}],172:[function(require,module,exports){
+},{"../internals/baseClone":127,"../internals/baseCreateCallback":129}],171:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18059,7 +17981,7 @@ function cloneDeep(value, callback, thisArg) {
 
 module.exports = cloneDeep;
 
-},{"../internals/baseClone":128,"../internals/baseCreateCallback":130}],173:[function(require,module,exports){
+},{"../internals/baseClone":127,"../internals/baseCreateCallback":129}],172:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18109,7 +18031,7 @@ function create(prototype, properties) {
 
 module.exports = create;
 
-},{"../internals/baseCreate":129,"./assign":170}],174:[function(require,module,exports){
+},{"../internals/baseCreate":128,"./assign":169}],173:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18165,7 +18087,7 @@ var defaults = function(object, source, guard) {
 
 module.exports = defaults;
 
-},{"../internals/objectTypes":158,"./keys":201}],175:[function(require,module,exports){
+},{"../internals/objectTypes":157,"./keys":200}],174:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18232,7 +18154,7 @@ function findKey(object, callback, thisArg) {
 
 module.exports = findKey;
 
-},{"../functions/createCallback":114,"./forOwn":179}],176:[function(require,module,exports){
+},{"../functions/createCallback":113,"./forOwn":178}],175:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18299,7 +18221,7 @@ function findLastKey(object, callback, thisArg) {
 
 module.exports = findLastKey;
 
-},{"../functions/createCallback":114,"./forOwnRight":180}],177:[function(require,module,exports){
+},{"../functions/createCallback":113,"./forOwnRight":179}],176:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18355,7 +18277,7 @@ var forIn = function(collection, callback, thisArg) {
 
 module.exports = forIn;
 
-},{"../internals/baseCreateCallback":130,"../internals/objectTypes":158}],178:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../internals/objectTypes":157}],177:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18414,7 +18336,7 @@ function forInRight(object, callback, thisArg) {
 
 module.exports = forInRight;
 
-},{"../internals/baseCreateCallback":130,"./forIn":177}],179:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"./forIn":176}],178:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18466,7 +18388,7 @@ var forOwn = function(collection, callback, thisArg) {
 
 module.exports = forOwn;
 
-},{"../internals/baseCreateCallback":130,"../internals/objectTypes":158,"./keys":201}],180:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../internals/objectTypes":157,"./keys":200}],179:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18512,7 +18434,7 @@ function forOwnRight(object, callback, thisArg) {
 
 module.exports = forOwnRight;
 
-},{"../internals/baseCreateCallback":130,"./keys":201}],181:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"./keys":200}],180:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18551,7 +18473,7 @@ function functions(object) {
 
 module.exports = functions;
 
-},{"./forIn":177,"./isFunction":192}],182:[function(require,module,exports){
+},{"./forIn":176,"./isFunction":191}],181:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18588,7 +18510,7 @@ function has(object, key) {
 
 module.exports = has;
 
-},{}],183:[function(require,module,exports){
+},{}],182:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18627,7 +18549,7 @@ function invert(object) {
 
 module.exports = invert;
 
-},{"./keys":201}],184:[function(require,module,exports){
+},{"./keys":200}],183:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18669,7 +18591,7 @@ function isArguments(value) {
 
 module.exports = isArguments;
 
-},{}],185:[function(require,module,exports){
+},{}],184:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18716,7 +18638,7 @@ var isArray = nativeIsArray || function(value) {
 
 module.exports = isArray;
 
-},{"../internals/isNative":152}],186:[function(require,module,exports){
+},{"../internals/isNative":151}],185:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18755,7 +18677,7 @@ function isBoolean(value) {
 
 module.exports = isBoolean;
 
-},{}],187:[function(require,module,exports){
+},{}],186:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18793,7 +18715,7 @@ function isDate(value) {
 
 module.exports = isDate;
 
-},{}],188:[function(require,module,exports){
+},{}],187:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18822,7 +18744,7 @@ function isElement(value) {
 
 module.exports = isElement;
 
-},{}],189:[function(require,module,exports){
+},{}],188:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18887,7 +18809,7 @@ function isEmpty(value) {
 
 module.exports = isEmpty;
 
-},{"./forOwn":179,"./isFunction":192}],190:[function(require,module,exports){
+},{"./forOwn":178,"./isFunction":191}],189:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18943,7 +18865,7 @@ function isEqual(a, b, callback, thisArg) {
 
 module.exports = isEqual;
 
-},{"../internals/baseCreateCallback":130,"../internals/baseIsEqual":135}],191:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../internals/baseIsEqual":134}],190:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -18991,7 +18913,7 @@ function isFinite(value) {
 
 module.exports = isFinite;
 
-},{}],192:[function(require,module,exports){
+},{}],191:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19020,7 +18942,7 @@ function isFunction(value) {
 
 module.exports = isFunction;
 
-},{}],193:[function(require,module,exports){
+},{}],192:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19064,7 +18986,7 @@ function isNaN(value) {
 
 module.exports = isNaN;
 
-},{"./isNumber":195}],194:[function(require,module,exports){
+},{"./isNumber":194}],193:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19096,7 +19018,7 @@ function isNull(value) {
 
 module.exports = isNull;
 
-},{}],195:[function(require,module,exports){
+},{}],194:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19137,7 +19059,7 @@ function isNumber(value) {
 
 module.exports = isNumber;
 
-},{}],196:[function(require,module,exports){
+},{}],195:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19178,7 +19100,7 @@ function isObject(value) {
 
 module.exports = isObject;
 
-},{"../internals/objectTypes":158}],197:[function(require,module,exports){
+},{"../internals/objectTypes":157}],196:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19240,7 +19162,7 @@ var isPlainObject = !getPrototypeOf ? shimIsPlainObject : function(value) {
 
 module.exports = isPlainObject;
 
-},{"../internals/isNative":152,"../internals/shimIsPlainObject":165}],198:[function(require,module,exports){
+},{"../internals/isNative":151,"../internals/shimIsPlainObject":164}],197:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19278,7 +19200,7 @@ function isRegExp(value) {
 
 module.exports = isRegExp;
 
-},{}],199:[function(require,module,exports){
+},{}],198:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19317,7 +19239,7 @@ function isString(value) {
 
 module.exports = isString;
 
-},{}],200:[function(require,module,exports){
+},{}],199:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19346,7 +19268,7 @@ function isUndefined(value) {
 
 module.exports = isUndefined;
 
-},{}],201:[function(require,module,exports){
+},{}],200:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19384,7 +19306,7 @@ var keys = !nativeKeys ? shimKeys : function(object) {
 
 module.exports = keys;
 
-},{"../internals/isNative":152,"../internals/shimKeys":166,"./isObject":196}],202:[function(require,module,exports){
+},{"../internals/isNative":151,"../internals/shimKeys":165,"./isObject":195}],201:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19444,7 +19366,7 @@ function mapValues(object, callback, thisArg) {
 
 module.exports = mapValues;
 
-},{"../functions/createCallback":114,"./forOwn":179}],203:[function(require,module,exports){
+},{"../functions/createCallback":113,"./forOwn":178}],202:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19543,7 +19465,7 @@ function merge(object) {
 
 module.exports = merge;
 
-},{"../internals/baseCreateCallback":130,"../internals/baseMerge":136,"../internals/getArray":148,"../internals/releaseArray":162,"../internals/slice":167,"./isObject":196}],204:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129,"../internals/baseMerge":135,"../internals/getArray":147,"../internals/releaseArray":161,"../internals/slice":166,"./isObject":195}],203:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19612,7 +19534,7 @@ function omit(object, callback, thisArg) {
 
 module.exports = omit;
 
-},{"../functions/createCallback":114,"../internals/baseDifference":132,"../internals/baseFlatten":133,"./forIn":177}],205:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/baseDifference":131,"../internals/baseFlatten":132,"./forIn":176}],204:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19652,7 +19574,7 @@ function pairs(object) {
 
 module.exports = pairs;
 
-},{"./keys":201}],206:[function(require,module,exports){
+},{"./keys":200}],205:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19719,7 +19641,7 @@ function pick(object, callback, thisArg) {
 
 module.exports = pick;
 
-},{"../functions/createCallback":114,"../internals/baseFlatten":133,"./forIn":177,"./isObject":196}],207:[function(require,module,exports){
+},{"../functions/createCallback":113,"../internals/baseFlatten":132,"./forIn":176,"./isObject":195}],206:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19788,7 +19710,7 @@ function transform(object, callback, accumulator, thisArg) {
 
 module.exports = transform;
 
-},{"../collections/forEach":89,"../functions/createCallback":114,"../internals/baseCreate":129,"./forOwn":179,"./isArray":185}],208:[function(require,module,exports){
+},{"../collections/forEach":88,"../functions/createCallback":113,"../internals/baseCreate":128,"./forOwn":178,"./isArray":184}],207:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19826,7 +19748,7 @@ function values(object) {
 
 module.exports = values;
 
-},{"./keys":201}],209:[function(require,module,exports){
+},{"./keys":200}],208:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19868,7 +19790,7 @@ support.funcNames = typeof Function.name == 'string';
 
 module.exports = support;
 
-},{"./internals/isNative":152}],210:[function(require,module,exports){
+},{"./internals/isNative":151}],209:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19898,7 +19820,7 @@ module.exports = {
   'uniqueId': require('./utilities/uniqueId')
 };
 
-},{"./functions/createCallback":114,"./utilities/constant":211,"./utilities/escape":212,"./utilities/identity":213,"./utilities/mixin":214,"./utilities/noConflict":215,"./utilities/noop":216,"./utilities/now":217,"./utilities/parseInt":218,"./utilities/property":219,"./utilities/random":220,"./utilities/result":221,"./utilities/template":222,"./utilities/templateSettings":223,"./utilities/times":224,"./utilities/unescape":225,"./utilities/uniqueId":226}],211:[function(require,module,exports){
+},{"./functions/createCallback":113,"./utilities/constant":210,"./utilities/escape":211,"./utilities/identity":212,"./utilities/mixin":213,"./utilities/noConflict":214,"./utilities/noop":215,"./utilities/now":216,"./utilities/parseInt":217,"./utilities/property":218,"./utilities/random":219,"./utilities/result":220,"./utilities/template":221,"./utilities/templateSettings":222,"./utilities/times":223,"./utilities/unescape":224,"./utilities/uniqueId":225}],210:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19931,7 +19853,7 @@ function constant(value) {
 
 module.exports = constant;
 
-},{}],212:[function(require,module,exports){
+},{}],211:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19964,7 +19886,7 @@ function escape(string) {
 
 module.exports = escape;
 
-},{"../internals/escapeHtmlChar":146,"../internals/reUnescapedHtml":161,"../objects/keys":201}],213:[function(require,module,exports){
+},{"../internals/escapeHtmlChar":145,"../internals/reUnescapedHtml":160,"../objects/keys":200}],212:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -19994,7 +19916,7 @@ function identity(value) {
 
 module.exports = identity;
 
-},{}],214:[function(require,module,exports){
+},{}],213:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20084,7 +20006,7 @@ function mixin(object, source, options) {
 
 module.exports = mixin;
 
-},{"../collections/forEach":89,"../objects/functions":181,"../objects/isFunction":192,"../objects/isObject":196}],215:[function(require,module,exports){
+},{"../collections/forEach":88,"../objects/functions":180,"../objects/isFunction":191,"../objects/isObject":195}],214:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20116,7 +20038,7 @@ function noConflict() {
 
 module.exports = noConflict;
 
-},{}],216:[function(require,module,exports){
+},{}],215:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20144,7 +20066,7 @@ function noop() {
 
 module.exports = noop;
 
-},{}],217:[function(require,module,exports){
+},{}],216:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20174,7 +20096,7 @@ var now = isNative(now = Date.now) && now || function() {
 
 module.exports = now;
 
-},{"../internals/isNative":152}],218:[function(require,module,exports){
+},{"../internals/isNative":151}],217:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20229,7 +20151,7 @@ var parseInt = nativeParseInt(whitespace + '08') == 8 ? nativeParseInt : functio
 
 module.exports = parseInt;
 
-},{"../objects/isString":199}],219:[function(require,module,exports){
+},{"../objects/isString":198}],218:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20271,7 +20193,7 @@ function property(key) {
 
 module.exports = property;
 
-},{}],220:[function(require,module,exports){
+},{}],219:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20346,7 +20268,7 @@ function random(min, max, floating) {
 
 module.exports = random;
 
-},{"../internals/baseRandom":137}],221:[function(require,module,exports){
+},{"../internals/baseRandom":136}],220:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20393,7 +20315,7 @@ function result(object, key) {
 
 module.exports = result;
 
-},{"../objects/isFunction":192}],222:[function(require,module,exports){
+},{"../objects/isFunction":191}],221:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20611,7 +20533,7 @@ function template(text, data, options) {
 
 module.exports = template;
 
-},{"../internals/escapeStringChar":147,"../internals/reInterpolate":160,"../objects/defaults":174,"../objects/keys":201,"../objects/values":208,"./escape":212,"./templateSettings":223}],223:[function(require,module,exports){
+},{"../internals/escapeStringChar":146,"../internals/reInterpolate":159,"../objects/defaults":173,"../objects/keys":200,"../objects/values":207,"./escape":211,"./templateSettings":222}],222:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20686,7 +20608,7 @@ var templateSettings = {
 
 module.exports = templateSettings;
 
-},{"../internals/reInterpolate":160,"./escape":212}],224:[function(require,module,exports){
+},{"../internals/reInterpolate":159,"./escape":211}],223:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20734,7 +20656,7 @@ function times(n, callback, thisArg) {
 
 module.exports = times;
 
-},{"../internals/baseCreateCallback":130}],225:[function(require,module,exports){
+},{"../internals/baseCreateCallback":129}],224:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20768,7 +20690,7 @@ function unescape(string) {
 
 module.exports = unescape;
 
-},{"../internals/reEscapedHtml":159,"../internals/unescapeHtmlChar":168,"../objects/keys":201}],226:[function(require,module,exports){
+},{"../internals/reEscapedHtml":158,"../internals/unescapeHtmlChar":167,"../objects/keys":200}],225:[function(require,module,exports){
 /**
  * Lo-Dash 2.4.1 (Custom Build) <http://lodash.com/>
  * Build: `lodash modularize modern exports="node" -o ./modern/`
@@ -20804,7 +20726,7 @@ function uniqueId(prefix) {
 
 module.exports = uniqueId;
 
-},{}],227:[function(require,module,exports){
+},{}],226:[function(require,module,exports){
 // In order to help people who were accidentally upgraded to this ES client,
 // throw an error when they try to instanciate the exported function.
 // previous "elasticsearch" module -> https://github.com/ncb000gt/node-es
@@ -20821,7 +20743,7 @@ es.errors = require('./lib/errors');
 
 module.exports = es;
 
-},{"./lib/client":232,"./lib/connection_pool":235,"./lib/errors":238,"./lib/transport":249}],228:[function(require,module,exports){
+},{"./lib/client":231,"./lib/connection_pool":234,"./lib/errors":237,"./lib/transport":248}],227:[function(require,module,exports){
 /* jshint maxlen: false */
 
 var ca = require('../client_action');
@@ -24091,7 +24013,7 @@ api.create = ca.proxy(api.index, {
     params.op_type = 'create';
   }
 });
-},{"../client_action":233}],229:[function(require,module,exports){
+},{"../client_action":232}],228:[function(require,module,exports){
 /* jshint maxlen: false */
 
 var ca = require('../client_action');
@@ -27352,7 +27274,7 @@ api.indices.prototype.segments = ca({
 });
 
 /**
- * Perform a [indices.snapshotIndex](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/indices-gateway-snapshot.html) request
+ * Perform a [indices.snapshotIndex](http://www.elasticsearch.org/guide/en/elasticsearch/reference/0.90/indices-gateway-snapshot.html) request
  *
  * @param {Object} params - An object with parameters used to carry out this action
  * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
@@ -29250,7 +29172,7 @@ api.create = ca.proxy(api.index, {
     params.op_type = 'create';
   }
 });
-},{"../client_action":233}],230:[function(require,module,exports){
+},{"../client_action":232}],229:[function(require,module,exports){
 /* jshint maxlen: false */
 
 var ca = require('../client_action');
@@ -34579,14 +34501,14 @@ api.create = ca.proxy(api.index, {
     params.op_type = 'create';
   }
 });
-},{"../client_action":233}],231:[function(require,module,exports){
+},{"../client_action":232}],230:[function(require,module,exports){
 module.exports = {
   '1.1': require('./1_1'),
   '1.0': require('./1_0'),
   '0.90': require('./0_90')
 };
 
-},{"./0_90":228,"./1_0":229,"./1_1":230}],232:[function(require,module,exports){
+},{"./0_90":227,"./1_0":228,"./1_1":229}],231:[function(require,module,exports){
 /**
  * A client that makes requests to Elasticsearch via a {{#crossLink "Transport"}}Transport{{/crossLink}}
  *
@@ -34661,7 +34583,7 @@ function Client(config) {
 }
 
 Client.apis = require('./apis');
-},{"./apis":231,"./transport":249,"./utils":251}],233:[function(require,module,exports){
+},{"./apis":230,"./transport":248,"./utils":250}],232:[function(require,module,exports){
 /**
  * Constructs a function that can be called to make a request to ES
  * @type {[type]}
@@ -34968,7 +34890,7 @@ ClientAction.proxy = function (fn, spec) {
   };
 };
 
-},{"./utils":251}],234:[function(require,module,exports){
+},{"./utils":250}],233:[function(require,module,exports){
 module.exports = ConnectionAbstract;
 
 var _ = require('./utils');
@@ -35068,7 +34990,7 @@ ConnectionAbstract.prototype.setStatus = function (status) {
     this.removeAllListeners();
   }
 };
-},{"./errors":238,"./host":239,"./log":240,"./utils":251,"events":42}],235:[function(require,module,exports){
+},{"./errors":237,"./host":238,"./log":239,"./utils":250,"events":41}],234:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Manager of connections to a node(s), capable of ensuring that connections are clear and living
  * before providing them to the application
@@ -35401,7 +35323,7 @@ ConnectionPool.prototype.close = function () {
   this.setHosts([]);
 };
 ConnectionPool.prototype.empty = ConnectionPool.prototype.close;
-},{"./connectors":236,"./log":240,"./selectors":245,"./utils":251,"__browserify_process":51}],236:[function(require,module,exports){
+},{"./connectors":235,"./log":239,"./selectors":244,"./utils":250,"__browserify_process":50}],235:[function(require,module,exports){
 var opts = {
   xhr: require('./xhr'),
   jquery: require('./jquery'),
@@ -35427,7 +35349,7 @@ if (opts.xhr) {
 
 module.exports = opts;
 
-},{"../utils":251,"./angular":39,"./jquery":39,"./xhr":237}],237:[function(require,module,exports){
+},{"../utils":250,"./angular":38,"./jquery":38,"./xhr":236}],236:[function(require,module,exports){
 /**
  * Generic Transport for the browser, using the XmlHttpRequest object
  *
@@ -35516,7 +35438,7 @@ XhrConnector.prototype.request = function (params, cb) {
   };
 };
 
-},{"../connection":234,"../errors":238,"../utils":251}],238:[function(require,module,exports){
+},{"../connection":233,"../errors":237,"../utils":250}],237:[function(require,module,exports){
 var process=require("__browserify_process");var _ = require('./utils');
 var errors = module.exports;
 
@@ -35643,7 +35565,7 @@ _.each(statusCodes, function (name, status) {
   errors[status] = StatusCodeError;
 });
 
-},{"./utils":251,"__browserify_process":51}],239:[function(require,module,exports){
+},{"./utils":250,"__browserify_process":50}],238:[function(require,module,exports){
 /**
  * Class to wrap URLS, formatting them and maintaining their separate details
  * @type {[type]}
@@ -35808,7 +35730,7 @@ Host.prototype.toString = function () {
   return this.makeUrl();
 };
 
-},{"./utils":251,"querystring":44,"url":45}],240:[function(require,module,exports){
+},{"./utils":250,"querystring":43,"url":44}],239:[function(require,module,exports){
 var process=require("__browserify_process");var _ = require('./utils');
 var url = require('url');
 var EventEmitter = require('events').EventEmitter;
@@ -36110,7 +36032,7 @@ Log.normalizeTraceArgs = function (method, requestUrl, body, responseBody, respo
 
 module.exports = Log;
 
-},{"./loggers":242,"./utils":251,"__browserify_process":51,"events":42,"url":45}],241:[function(require,module,exports){
+},{"./loggers":241,"./utils":250,"__browserify_process":50,"events":41,"url":44}],240:[function(require,module,exports){
 var _ = require('./utils');
 
 /**
@@ -36292,12 +36214,12 @@ LoggerAbstract.prototype._prettyJson = function (body) {
 
 module.exports = LoggerAbstract;
 
-},{"./utils":251}],242:[function(require,module,exports){
+},{"./utils":250}],241:[function(require,module,exports){
 module.exports = {
   console: require('./console')
 };
 
-},{"./console":243}],243:[function(require,module,exports){
+},{"./console":242}],242:[function(require,module,exports){
 /**
  * Special version of the Stream logger, which logs errors and warnings to stderr and all other
  * levels to stdout.
@@ -36398,7 +36320,7 @@ Console.prototype.onTrace = _.handler(function (msg) {
   this.write('TRACE', this._formatTraceMessage(msg), 'log');
 });
 
-},{"../logger":241,"../utils":251}],244:[function(require,module,exports){
+},{"../logger":240,"../utils":250}],243:[function(require,module,exports){
 var _ = require('./utils');
 var extractHostPartsRE = /\[\/*([^:]+):(\d+)\]/;
 
@@ -36432,13 +36354,13 @@ function makeNodeParser(hostProp) {
 module.exports = makeNodeParser('http_address');
 module.exports.thrift = makeNodeParser('transport_address');
 
-},{"./utils":251}],245:[function(require,module,exports){
+},{"./utils":250}],244:[function(require,module,exports){
 module.exports = {
   random: require('./random'),
   roundRobin: require('./round_robin')
 };
 
-},{"./random":246,"./round_robin":247}],246:[function(require,module,exports){
+},{"./random":245,"./round_robin":246}],245:[function(require,module,exports){
 /**
  * Selects a connection randomly
  *
@@ -36451,7 +36373,7 @@ module.exports = function RandomSelector(connections) {
   return connections[Math.floor(Math.random() * connections.length)];
 };
 
-},{}],247:[function(require,module,exports){
+},{}],246:[function(require,module,exports){
 /**
  * Selects a connection the simplest way possible, Round Robin
  *
@@ -36466,7 +36388,7 @@ module.exports = function (connections) {
   return connection;
 };
 
-},{}],248:[function(require,module,exports){
+},{}],247:[function(require,module,exports){
 /**
  * Simple JSON serializer
  * @type {[type]}
@@ -36527,7 +36449,7 @@ Json.prototype.bulkBody = function (val) {
   return body;
 };
 
-},{"../utils":251}],249:[function(require,module,exports){
+},{"../utils":250}],248:[function(require,module,exports){
 /**
  * Class that manages making request, called by all of the API methods.
  * @type {[type]}
@@ -36899,7 +36821,7 @@ Transport.prototype.close = function () {
   _.each(this._timers, clearTimeout);
   this.connectionPool.close();
 };
-},{"./connection_pool":235,"./errors":238,"./host":239,"./log":240,"./nodes_to_host":244,"./serializers/json":248,"./transport/sniff_on_connection_fault":250,"./utils":251,"bluebird":3}],250:[function(require,module,exports){
+},{"./connection_pool":234,"./errors":237,"./host":238,"./log":239,"./nodes_to_host":243,"./serializers/json":247,"./transport/sniff_on_connection_fault":249,"./utils":250,"bluebird":3}],249:[function(require,module,exports){
 var _ = require('../utils');
 
 
@@ -36959,7 +36881,7 @@ module.exports = function setupSniffOnConnectionFault(transport) {
     pool._onConnectionDied = originalOnDied;
   };
 };
-},{"../utils":251}],251:[function(require,module,exports){
+},{"../utils":250}],250:[function(require,module,exports){
 var process=require("__browserify_process"),Buffer=require("__browserify_Buffer").Buffer;var path = require('path');
 var _ = require('lodash-node/modern');
 var nodeUtils = require('util');
@@ -37389,7 +37311,7 @@ _.now = function () {
 
 module.exports = utils;
 
-},{"__browserify_Buffer":50,"__browserify_process":51,"lodash-node/modern":125,"path":43,"util":46}]},{},[227])
-(227)
+},{"__browserify_Buffer":49,"__browserify_process":50,"lodash-node/modern":124,"path":42,"util":45}]},{},[226])
+(226)
 });
 ;
