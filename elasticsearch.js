@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.1.4 - 2014-04-22
+/*! elasticsearch - v2.1.5 - 2014-05-19
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -926,7 +926,7 @@ else {
     var str = {}.toString;
     var proto = {}.constructor.prototype;
 
-    function ObjectKeys(o) {
+    var ObjectKeys = function ObjectKeys(o) {
         var ret = [];
         for (var key in o) {
             if (has.call(o, key)) {
@@ -936,16 +936,16 @@ else {
         return ret;
     }
 
-    function ObjectDefineProperty(o, key, desc) {
+    var ObjectDefineProperty = function ObjectDefineProperty(o, key, desc) {
         o[key] = desc.value;
         return o;
     }
 
-    function ObjectFreeze(obj) {
+    var ObjectFreeze = function ObjectFreeze(obj) {
         return obj;
     }
 
-    function ObjectGetPrototypeOf(obj) {
+    var ObjectGetPrototypeOf = function ObjectGetPrototypeOf(obj) {
         try {
             return Object(obj).constructor.prototype;
         }
@@ -954,7 +954,7 @@ else {
         }
     }
 
-    function ArrayIsArray(obj) {
+    var ArrayIsArray = function ArrayIsArray(obj) {
         try {
             return str.call(obj) === "[object Array]";
         }
@@ -1210,7 +1210,7 @@ Promise.spawn = function Promise$Spawn(generatorFunction) {
 };
 
 },{"./errors.js":9,"./promise_spawn.js":22,"./util.js":37}],15:[function(require,module,exports){
-var process=require("__browserify_process"),global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
+var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * Copyright (c) 2014 Petka Antonov
  * 
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -1232,28 +1232,17 @@ var process=require("__browserify_process"),global=typeof self !== "undefined" ?
  * THE SOFTWARE.
  * 
  */
-"use strict";
-module.exports = (function(){
-if (typeof this !== "undefined") {
-    return this;
-}
-if (typeof process !== "undefined" &&
-    typeof global !== "undefined" &&
-    typeof process.execPath === "string") {
-    return global;
-}
-if (typeof window !== "undefined" &&
-    typeof document !== "undefined" &&
-    typeof navigator !== "undefined" && navigator !== null &&
-    typeof navigator.appName === "string") {
-        if(window.wrappedJSObject !== undefined){
-            return window.wrappedJSObject;
-        }
-    return window;
-}
+module.exports = (function() {
+    if (this !== void 0) return this;
+    try {return global;}
+    catch(e) {}
+    try {return window;}
+    catch(e) {}
+    try {return self;}
+    catch(e) {}
 })();
 
-},{"__browserify_process":50}],16:[function(require,module,exports){
+},{}],16:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -1468,7 +1457,9 @@ function thrower(r) {
 
 function Promise$_successAdapter(val, receiver) {
     var nodeback = this;
-    var ret = tryCatch2(nodeback, receiver, null, val);
+    var ret = val === void 0
+        ? tryCatch1(nodeback, receiver, null)
+        : tryCatch2(nodeback, receiver, null, val);
     if (ret === errorObj) {
         async.invokeLater(thrower, void 0, ret.e);
     }
@@ -2834,6 +2825,7 @@ function PromiseArray$_init(_, resolveValueIfEmpty) {
             return;
         }
         else {
+            values._unsetRejectionIsUnhandled();
             this._reject(values._settledValue);
             return;
         }
@@ -3083,6 +3075,9 @@ PromiseResolver.prototype.toString = function PromiseResolver$toString() {
 PromiseResolver.prototype.resolve =
 PromiseResolver.prototype.fulfill = function PromiseResolver$resolve(value) {
     var promise = this.promise;
+    if ((promise === void 0) || (promise._tryFollow === void 0)) {
+        throw new TypeError("Illegal invocation, resolver resolve/reject must be called within a resolver context. Consider using the promise constructor instead.");
+    }
     if (promise._tryFollow(value)) {
         return;
     }
@@ -3091,6 +3086,9 @@ PromiseResolver.prototype.fulfill = function PromiseResolver$resolve(value) {
 
 PromiseResolver.prototype.reject = function PromiseResolver$reject(reason) {
     var promise = this.promise;
+    if ((promise === void 0) || (promise._attachExtraTrace === void 0)) {
+        throw new TypeError("Illegal invocation, resolver resolve/reject must be called within a resolver context. Consider using the promise constructor instead.");
+    }
     errors.markAsOriginatingFromRejection(reason);
     var trace = errors.canAttach(reason) ? reason : new Error(reason + "");
     promise._attachExtraTrace(trace);
@@ -3295,41 +3293,59 @@ var nodebackForPromise = require("./promise_resolver.js")
 var withAppended = util.withAppended;
 var maybeWrapAsError = util.maybeWrapAsError;
 var canEvaluate = util.canEvaluate;
-var notEnumerableProp = util.notEnumerableProp;
 var deprecated = util.deprecated;
-var roriginal = new RegExp("__beforePromisified__" + "$");
-var hasProp = {}.hasOwnProperty;
+var TypeError = require("./errors").TypeError;
+
+
+var rasyncSuffix = new RegExp("Async" + "$");
 function isPromisified(fn) {
     return fn.__isPromisified__ === true;
+}
+function hasPromisified(obj, key) {
+    var containsKey = ((key + "Async") in obj);
+    return containsKey ? isPromisified(obj[key + "Async"])
+                       : false;
+}
+function checkValid(ret) {
+    for (var i = 0; i < ret.length; i += 2) {
+        var key = ret[i];
+        if (rasyncSuffix.test(key)) {
+            var keyWithoutAsyncSuffix = key.replace(rasyncSuffix, "");
+            for (var j = 0; j < ret.length; j += 2) {
+                if (ret[j] === keyWithoutAsyncSuffix) {
+                    throw new TypeError("Cannot promisify an API " +
+                        "that has normal methods with Async-suffix");
+                }
+            }
+        }
+    }
 }
 var inheritedMethods = (function() {
     if (es5.isES5) {
         var create = Object.create;
         var getOwnPropertyDescriptor = Object.getOwnPropertyDescriptor;
         return function(cur) {
-            var original = cur;
             var ret = [];
             var visitedKeys = create(null);
+            var original = cur;
             while (cur !== null) {
                 var keys = es5.keys(cur);
                 for (var i = 0, len = keys.length; i < len; ++i) {
                     var key = keys[i];
-                    if (visitedKeys[key] ||
-                        roriginal.test(key) ||
-                        hasProp.call(original, key + "__beforePromisified__")
-                   ) {
-                        continue;
-                    }
+                    if (visitedKeys[key]) continue;
                     visitedKeys[key] = true;
                     var desc = getOwnPropertyDescriptor(cur, key);
+
                     if (desc != null &&
                         typeof desc.value === "function" &&
-                        !isPromisified(desc.value)) {
+                        !isPromisified(desc.value) &&
+                        !hasPromisified(original, key)) {
                         ret.push(key, desc.value);
                     }
                 }
                 cur = es5.getPrototypeOf(cur);
             }
+            checkValid(ret);
             return ret;
         };
     }
@@ -3338,16 +3354,14 @@ var inheritedMethods = (function() {
             var ret = [];
             /*jshint forin:false */
             for (var key in obj) {
-                if (roriginal.test(key) ||
-                    hasProp.call(obj, key + "__beforePromisified__")) {
-                    continue;
-                }
                 var fn = obj[key];
                 if (typeof fn === "function" &&
-                    !isPromisified(fn)) {
+                    !isPromisified(fn) &&
+                    !hasPromisified(obj, key)) {
                     ret.push(key, fn);
                 }
             }
+            checkValid(ret);
             return ret;
         };
     }
@@ -3381,9 +3395,8 @@ function parameterCount(fn) {
     return 0;
 }
 
+var rident = /^[a-z$_][a-z$_0-9]*$/i;
 function propertyAccess(id) {
-    var rident = /^[a-z$_][a-z$_0-9]*$/i;
-
     if (rident.test(id)) {
         return "." + id;
     }
@@ -3417,6 +3430,10 @@ function makeNodePromisifiedEval(callback, receiver, originalName, fn) {
                 ? "this"
                 : "receiver")+", "+args.join(",") + comma + " fn);") +
         "break;";
+    }
+
+    if (!rident.test(callbackName)) {
+        callbackName = "promisified";
     }
 
     function generateArgumentSwitchCase() {
@@ -3501,12 +3518,8 @@ function _promisify(callback, receiver, isAll) {
         for (var i = 0, len = methods.length; i < len; i+= 2) {
             var key = methods[i];
             var fn = methods[i+1];
-            var originalKey = key + "__beforePromisified__";
             var promisifiedKey = key + "Async";
-            notEnumerableProp(callback, originalKey, fn);
-            callback[promisifiedKey] =
-                makeNodePromisified(originalKey, THIS,
-                    key, fn);
+            callback[promisifiedKey] = makeNodePromisified(key, THIS, key, fn);
         }
         util.toFastProperties(callback);
         return callback;
@@ -3542,7 +3555,7 @@ Promise.promisifyAll = function Promise$PromisifyAll(target) {
 };
 
 
-},{"./es5.js":11,"./promise_resolver.js":21,"./util.js":37}],24:[function(require,module,exports){
+},{"./errors":9,"./es5.js":11,"./promise_resolver.js":21,"./util.js":37}],24:[function(require,module,exports){
 /**
  * Copyright (c) 2014 Petka Antonov
  * 
@@ -28695,6 +28708,75 @@ api.search = ca({
   method: 'POST'
 });
 
+/**
+ * Perform a [searchShards](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-shards.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.searchShards = ca({
+  params: {
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    local: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_search_shards'
+    }
+  ],
+  method: 'POST'
+});
+
 api.snapshot = function SnapshotNS(transport) {
   this.transport = transport;
 };
@@ -30901,6 +30983,7 @@ api.indices = function IndicesNS(transport) {
  *
  * @param {Object} params - An object with parameters used to carry out this action
  * @param {String} params.analyzer - The name of the analyzer to use
+ * @param {String, String[], Boolean} params.charFilters - A comma-separated list of character filters to use for the analysis
  * @param {String} params.field - Use the analyzer configured for this field (instead of passing the analyzer name)
  * @param {String, String[], Boolean} params.filters - A comma-separated list of filters to use for the analysis
  * @param {String} params.index - The name of the index to scope the operation
@@ -30913,6 +30996,10 @@ api.indices.prototype.analyze = ca({
   params: {
     analyzer: {
       type: 'string'
+    },
+    charFilters: {
+      type: 'list',
+      name: 'char_filters'
     },
     field: {
       type: 'string'
@@ -33986,6 +34073,75 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
+/**
+ * Perform a [searchShards](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-shards.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.searchShards = ca({
+  params: {
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    local: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_search_shards'
+    }
+  ],
+  method: 'POST'
+});
+
 api.snapshot = function SnapshotNS(transport) {
   this.transport = transport;
 };
@@ -35449,17 +35605,25 @@ XhrConnector.prototype.request = function (params, cb) {
 };
 
 },{"../connection":233,"../errors":237,"../utils":250}],237:[function(require,module,exports){
-var process=require("__browserify_process");var _ = require('./utils');
+var _ = require('./utils');
 var errors = module.exports;
+
+var canCapture = (typeof Error.captureStackTrace === 'function');
+var canStack = !!(new Error()).stack;
 
 function ErrorAbstract(msg, constructor) {
   this.message = msg;
 
   Error.call(this, this.message);
-  if (process.browser) {
-    this.stack = '';
-  } else {
+
+  if (canCapture) {
     Error.captureStackTrace(this, constructor);
+  }
+  else if (canStack) {
+    this.stack = (new Error()).stack;
+  }
+  else {
+    this.stack = '';
   }
 }
 errors._Abstract = ErrorAbstract;
@@ -35511,6 +35675,14 @@ errors.Serialization = function Serialization(msg) {
 };
 _.inherits(errors.Serialization, ErrorAbstract);
 
+
+/**
+ * Thrown when a browser compatability issue is detected (cough, IE, cough)
+ */
+errors.RequestTypeError = function RequestTypeError(feature) {
+  ErrorAbstract.call(this, 'Cross-domain AJAX requests ' + feature + ' are not supported', errors.RequestTypeError);
+};
+_.inherits(errors.RequestTypeError, ErrorAbstract);
 
 var statusCodes = {
 
@@ -35575,7 +35747,7 @@ _.each(statusCodes, function (name, status) {
   errors[status] = StatusCodeError;
 });
 
-},{"./utils":250,"__browserify_process":50}],238:[function(require,module,exports){
+},{"./utils":250}],238:[function(require,module,exports){
 /**
  * Class to wrap URLS, formatting them and maintaining their separate details
  * @type {[type]}
@@ -36641,6 +36813,12 @@ Transport.prototype.request = function (params, cb) {
     }
 
     requestAborter = void 0;
+
+    if (err instanceof errors.RequestTypeError) {
+      self.log.error('Connection refused to execute the request', err);
+      respond(err, body, status, headers);
+      return;
+    }
 
     if (err) {
       connection.setStatus('dead');

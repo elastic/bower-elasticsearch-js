@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.1.4 - 2014-04-22
+/*! elasticsearch - v2.1.5 - 2014-05-19
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -23703,6 +23703,75 @@ api.search = ca({
   method: 'POST'
 });
 
+/**
+ * Perform a [searchShards](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-shards.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.searchShards = ca({
+  params: {
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    local: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_search_shards'
+    }
+  ],
+  method: 'POST'
+});
+
 api.snapshot = function SnapshotNS(transport) {
   this.transport = transport;
 };
@@ -25909,6 +25978,7 @@ api.indices = function IndicesNS(transport) {
  *
  * @param {Object} params - An object with parameters used to carry out this action
  * @param {String} params.analyzer - The name of the analyzer to use
+ * @param {String, String[], Boolean} params.charFilters - A comma-separated list of character filters to use for the analysis
  * @param {String} params.field - Use the analyzer configured for this field (instead of passing the analyzer name)
  * @param {String, String[], Boolean} params.filters - A comma-separated list of filters to use for the analysis
  * @param {String} params.index - The name of the index to scope the operation
@@ -25921,6 +25991,10 @@ api.indices.prototype.analyze = ca({
   params: {
     analyzer: {
       type: 'string'
+    },
+    charFilters: {
+      type: 'list',
+      name: 'char_filters'
     },
     field: {
       type: 'string'
@@ -28994,6 +29068,75 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
+/**
+ * Perform a [searchShards](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-shards.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.searchShards = ca({
+  params: {
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    local: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_search_shards'
+    }
+  ],
+  method: 'POST'
+});
+
 api.snapshot = function SnapshotNS(transport) {
   this.transport = transport;
 };
@@ -30420,17 +30563,25 @@ JqueryConnector.prototype.request = function (params, cb) {
 
 
 },{"../connection":197,"../errors":201,"../utils":214}],201:[function(require,module,exports){
-var process=require("__browserify_process");var _ = require('./utils');
+var _ = require('./utils');
 var errors = module.exports;
+
+var canCapture = (typeof Error.captureStackTrace === 'function');
+var canStack = !!(new Error()).stack;
 
 function ErrorAbstract(msg, constructor) {
   this.message = msg;
 
   Error.call(this, this.message);
-  if (process.browser) {
-    this.stack = '';
-  } else {
+
+  if (canCapture) {
     Error.captureStackTrace(this, constructor);
+  }
+  else if (canStack) {
+    this.stack = (new Error()).stack;
+  }
+  else {
+    this.stack = '';
   }
 }
 errors._Abstract = ErrorAbstract;
@@ -30482,6 +30633,14 @@ errors.Serialization = function Serialization(msg) {
 };
 _.inherits(errors.Serialization, ErrorAbstract);
 
+
+/**
+ * Thrown when a browser compatability issue is detected (cough, IE, cough)
+ */
+errors.RequestTypeError = function RequestTypeError(feature) {
+  ErrorAbstract.call(this, 'Cross-domain AJAX requests ' + feature + ' are not supported', errors.RequestTypeError);
+};
+_.inherits(errors.RequestTypeError, ErrorAbstract);
 
 var statusCodes = {
 
@@ -30546,7 +30705,7 @@ _.each(statusCodes, function (name, status) {
   errors[status] = StatusCodeError;
 });
 
-},{"./utils":214,"__browserify_process":13}],202:[function(require,module,exports){
+},{"./utils":214}],202:[function(require,module,exports){
 /**
  * Class to wrap URLS, formatting them and maintaining their separate details
  * @type {[type]}
@@ -31612,6 +31771,12 @@ Transport.prototype.request = function (params, cb) {
     }
 
     requestAborter = void 0;
+
+    if (err instanceof errors.RequestTypeError) {
+      self.log.error('Connection refused to execute the request', err);
+      respond(err, body, status, headers);
+      return;
+    }
 
     if (err) {
       connection.setStatus('dead');
