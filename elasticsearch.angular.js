@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.3.0 - 2014-07-11
+/*! elasticsearch - v2.3.1 - 2014-07-23
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -34050,7 +34050,7 @@ Transport.prototype.request = function (params, cb) {
         respond(new errors.ConnectionFault(err));
       }
     } else {
-      self.log.info('Request complete');
+      self.log.debug('Request complete');
       respond(void 0, body, status, headers);
     }
   }
@@ -34228,6 +34228,7 @@ Transport.prototype.close = function () {
   _.each(this._timers, clearTimeout);
   this.connectionPool.close();
 };
+
 },{"./connection_pool":197,"./errors":200,"./host":201,"./log":202,"./nodes_to_host":206,"./serializers/json":210,"./transport/sniff_on_connection_fault":212,"./utils":213,"bluebird":1}],212:[function(require,module,exports){
 var _ = require('../utils');
 
