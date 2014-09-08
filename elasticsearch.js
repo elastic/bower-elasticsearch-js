@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.4.1 - 2014-09-03
+/*! elasticsearch - v2.4.2 - 2014-09-08
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -38198,7 +38198,8 @@ ConnectionPool.prototype._selectDeadConnection = function (cb) {
  * and sniffing, where using the selector to get all of the living connections
  * is not reasonable.
  *
- * @param {Number} limit - Max number to return
+ * @param {string} [status] - optional status of the connection to fetch
+ * @param {Number} [limit] - optional limit on the number of connections to return
  */
 ConnectionPool.prototype.getConnections = function (status, limit) {
   var list;
@@ -38208,7 +38209,11 @@ ConnectionPool.prototype.getConnections = function (status, limit) {
     list = this._conns[this._conns.alive.length ? 'alive' : 'dead'];
   }
 
-  return _.shuffle(list).slice(0, typeof limit === 'undefined' ? list.length : limit);
+  if (limit == null) {
+    return list.slice(0);
+  } else {
+    return _.shuffle(list).slice(0, limit);
+  }
 };
 
 /**
@@ -38569,8 +38574,9 @@ Host.defaultPorts = {
   https: 443
 };
 
-function Host(config) {
+function Host(config, globalConfig) {
   config = config || {};
+  globalConfig = globalConfig || {};
 
   // defaults
   this.protocol = 'http';
@@ -38580,6 +38586,7 @@ function Host(config) {
   this.auth = null;
   this.query = null;
   this.headers = null;
+  this.suggestCompression = !!globalConfig.suggestCompression;
 
   if (typeof config === 'string') {
     if (!startsWithProtocolRE.test(config)) {
@@ -38683,7 +38690,7 @@ Host.prototype.makeUrl = function (params) {
 function objectPropertyGetter(prop, preOverride) {
   return function (overrides) {
     if (preOverride) {
-      overrides = preOverride(overrides);
+      overrides = preOverride.call(this, overrides);
     }
 
     var obj = this[prop];
@@ -38699,7 +38706,16 @@ function objectPropertyGetter(prop, preOverride) {
   };
 }
 
-Host.prototype.getHeaders = objectPropertyGetter('headers');
+Host.prototype.getHeaders = objectPropertyGetter('headers', function (overrides) {
+  if (!this.suggestCompression) {
+    return overrides;
+  }
+
+  return _.defaults(overrides || {}, {
+    'Accept-Encoding': 'gzip,deflate'
+  });
+});
+
 Host.prototype.getQuery = objectPropertyGetter('query', function (query) {
   return typeof query === 'string' ? qs.parse(query) : query;
 });
@@ -39442,33 +39458,33 @@ var patchSniffOnConnectionFault = require('./transport/sniff_on_connection_fault
 
 function Transport(config) {
   var self = this;
-  config = config || {};
+  config = self._config = config || {};
 
   var LogClass = (typeof config.log === 'function') ? config.log : require('./log');
-  config.log = this.log = new LogClass(config);
+  config.log = self.log = new LogClass(config);
 
   // setup the connection pool
   var ConnectionPool = _.funcEnum(config, 'connectionPool', Transport.connectionPools, 'main');
-  this.connectionPool = new ConnectionPool(config);
+  self.connectionPool = new ConnectionPool(config);
 
   // setup the serializer
   var Serializer = _.funcEnum(config, 'serializer', Transport.serializers, 'json');
-  this.serializer = new Serializer(config);
+  self.serializer = new Serializer(config);
 
   // setup the nodesToHostCallback
-  this.nodesToHostCallback = _.funcEnum(config, 'nodesToHostCallback', Transport.nodesToHostCallbacks, 'main');
+  self.nodesToHostCallback = _.funcEnum(config, 'nodesToHostCallback', Transport.nodesToHostCallbacks, 'main');
 
   // setup max retries
-  this.maxRetries = config.hasOwnProperty('maxRetries') ? config.maxRetries : 3;
+  self.maxRetries = config.hasOwnProperty('maxRetries') ? config.maxRetries : 3;
 
   // setup endpoint to use for sniffing
-  this.sniffEndpoint = config.hasOwnProperty('sniffEndpoint') ? config.sniffEndpoint : '/_nodes/_all/clear';
+  self.sniffEndpoint = config.hasOwnProperty('sniffEndpoint') ? config.sniffEndpoint : '/_nodes/_all/clear';
 
   // setup requestTimeout default
-  this.requestTimeout = config.hasOwnProperty('requestTimeout') ? config.requestTimeout : 30000;
+  self.requestTimeout = config.hasOwnProperty('requestTimeout') ? config.requestTimeout : 30000;
 
   if (config.hasOwnProperty('defer')) {
-    this.defer = config.defer;
+    self.defer = config.defer;
   }
 
   // randomizeHosts option
@@ -39484,35 +39500,36 @@ function Transport(config) {
         return val;
       }
     });
+
     if (!hostsConfig) {
       throw new TypeError('Invalid hosts config. Expected a URL, an array of urls, a host config object, ' +
         'or an array of host config objects.');
     }
 
     var hosts = _.map(hostsConfig, function (conf) {
-      return (conf instanceof Host) ? conf : new Host(conf);
+      return (conf instanceof Host) ? conf : new Host(conf, self._config);
     });
 
     if (randomizeHosts) {
       hosts = _.shuffle(hosts);
     }
 
-    this.connectionPool.setHosts(hosts);
+    self.connectionPool.setHosts(hosts);
   }
 
   if (config.sniffOnStart) {
-    this.sniff();
+    self.sniff();
   }
 
   if (config.sniffInterval) {
-    this._timeout(function doSniff() {
+    self._timeout(function doSniff() {
       self.sniff();
       self._timeout(doSniff, config.sniffInterval);
     }, config.sniffInterval);
   }
 
   if (config.sniffOnConnectionFault) {
-    patchSniffOnConnectionFault(this);
+    patchSniffOnConnectionFault(self);
   }
 }
 
@@ -39769,6 +39786,7 @@ Transport.prototype.sniff = function (cb) {
   var connectionPool = this.connectionPool;
   var nodesToHostCallback = this.nodesToHostCallback;
   var log = this.log;
+  var globalConfig = this._config;
 
   // make cb a function if it isn't
   cb = typeof cb === 'function' ? cb : _.noop;
@@ -39789,7 +39807,7 @@ Transport.prototype.sniff = function (cb) {
       }
 
       connectionPool.setHosts(_.map(hostsConfigs, function (hostConfig) {
-        return new Host(hostConfig);
+        return new Host(hostConfig, globalConfig);
       }));
     }
     cb(err, resp, status);
