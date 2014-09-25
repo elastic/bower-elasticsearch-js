@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.4.2 - 2014-09-08
+/*! elasticsearch - v2.4.3 - 2014-09-24
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -33170,25 +33170,37 @@ var _ = require('../utils');
 var ConnectionAbstract = require('../connection');
 var ConnectionFault = require('../errors').ConnectionFault;
 
+function makeAuthHeader(auth) {
+  return 'Basic ' + (new Buffer(auth, 'utf8')).toString('base64');
+}
+
 function AngularConnector(host, config) {
   ConnectionAbstract.call(this, host, config);
-  var connector = this;
+  var self = this;
+  self.headerDefaults = {};
+
+  if (self.host.auth) {
+    self.headerDefaults.Authorization = makeAuthHeader(self.host.auth);
+  }
 
   config.$injector.invoke(['$http', '$q', function ($http, $q) {
-    connector.$q = $q;
-    connector.$http = $http;
-
-    if (connector.host.auth) {
-      connector.$http.defaults.headers.common.Authorization = 'Basic ' + (new Buffer(connector.host.auth, 'utf8')).toString('base64');
-    }
+    self.$q = $q;
+    self.$http = $http;
   }]);
-
-
 }
 _.inherits(AngularConnector, ConnectionAbstract);
 
-AngularConnector.prototype.request = function (params, cb) {
+AngularConnector.prototype.request = function (userParams, cb) {
   var abort = this.$q.defer();
+  var params = _.cloneDeep(userParams);
+
+  params.headers = _.defaults(params.headers || {}, this.headerDefaults);
+  if (params.auth) {
+    params.headers.Authorization = makeAuthHeader(params.auth);
+  }
+
+  // inform the host not to use the auth, by overriding it in the params
+  params.auth = false;
 
   this.$http({
     method: params.method,
@@ -33212,7 +33224,6 @@ AngularConnector.prototype.request = function (params, cb) {
     abort.resolve();
   };
 };
-
 },{"../connection":196,"../errors":200,"../utils":213,"__browserify_Buffer":12}],199:[function(require,module,exports){
 var opts = {
   xhr: require('./xhr'),
@@ -33510,7 +33521,7 @@ Host.prototype.makeUrl = function (params) {
   var auth = '';
   if (params.auth) {
     auth = params.auth + '@';
-  } else if (this.auth) {
+  } else if (this.auth && params.auth !== false) {
     auth = this.auth + '@';
   }
 
