@@ -34789,6 +34789,8 @@ AngularSerializer.prototype.encode = function (val) {
     return;
   }
 };
+
+module.exports = AngularSerializer;
 },{"../serializers/json":212,"../utils":215}],212:[function(require,module,exports){
 /**
  * Simple JSON serializer

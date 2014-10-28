@@ -34798,6 +34798,8 @@ AngularSerializer.prototype.encode = function (val) {
     return;
   }
 };
+
+module.exports = AngularSerializer;
 },{"../serializers/json":211,"../utils":214}],211:[function(require,module,exports){
 /**
  * Simple JSON serializer
