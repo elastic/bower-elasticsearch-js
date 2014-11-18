@@ -1,4 +1,4 @@
-/*! elasticsearch - v2.4.3 - 2014-10-28
+/*! elasticsearch - v3.0.0 - 2014-11-18
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -31689,8 +31689,11 @@ api.nodes.prototype.stats = ca({
  * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
  * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
  * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.percolateFormat - Return an array of matching query IDs instead of objects
  * @param {String} params.percolateIndex - The index to percolate the document into. Defaults to index.
  * @param {String} params.percolateType - The type to percolate document into. Defaults to type.
+ * @param {String} params.percolateRouting - The routing value to use when percolating the existing document.
+ * @param {String} params.percolatePreference - Which shard to prefer when executing the percolate request.
  * @param {Number} params.version - Explicit version number for concurrency control
  * @param {String} params.versionType - Specific version type
  * @param {String} params.index - The index of the document being percolated.
@@ -31722,6 +31725,13 @@ api.percolate = ca({
       ],
       name: 'expand_wildcards'
     },
+    percolateFormat: {
+      type: 'enum',
+      options: [
+        'ids'
+      ],
+      name: 'percolate_format'
+    },
     percolateIndex: {
       type: 'string',
       name: 'percolate_index'
@@ -31729,6 +31739,14 @@ api.percolate = ca({
     percolateType: {
       type: 'string',
       name: 'percolate_type'
+    },
+    percolateRouting: {
+      type: 'string',
+      name: 'percolate_routing'
+    },
+    percolatePreference: {
+      type: 'string',
+      name: 'percolate_preference'
     },
     version: {
       type: 'number'
@@ -33947,6 +33965,13 @@ var qs = require('querystring');
 var _ = require('./utils');
 
 var startsWithProtocolRE = /^([a-z]+:)?\/\//;
+var defaultProto = 'http:';
+
+/* jshint ignore:start */
+if (typeof window !== 'undefined') {
+  defaultProto = window.location.protocol;
+}
+/* jshint ignore:end */
 
 var urlParseFields = [
   'protocol', 'hostname', 'pathname', 'port', 'auth', 'query'
@@ -33976,8 +34001,13 @@ function Host(config, globalConfig) {
   this.suggestCompression = !!globalConfig.suggestCompression;
 
   if (typeof config === 'string') {
-    if (!startsWithProtocolRE.test(config)) {
-      config = 'http://' + config;
+    var firstColon = config.indexOf(':');
+    var firstSlash = config.indexOf('/');
+    var noSlash = firstSlash === -1;
+    var portNoPath = firstColon > -1 && noSlash;
+    var portWithPath = !portNoPath && firstColon < firstSlash;
+    if ((noSlash || portNoPath || portWithPath) && !startsWithProtocolRE.test(config)) {
+      config = defaultProto + '//' + config;
     }
     config = _.pick(url.parse(config, false, true), urlParseFields);
     // default logic for the port is to use 9200 for the default. When a string is specified though,
@@ -34010,7 +34040,9 @@ function Host(config, globalConfig) {
     config = {};
   }
 
-  _.assign(this, config);
+  _.forOwn(config, function (val, prop) {
+    if (val != null) this[prop] = val;
+  }, this);
 
   // make sure the query string is parsed
   if (this.query === null) {
