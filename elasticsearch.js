@@ -1,4 +1,4 @@
-/*! elasticsearch - v3.0.1 - 2014-12-02
+/*! elasticsearch - v3.0.2 - 2014-12-12
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -25904,7 +25904,7 @@ api.snapshot.prototype.create = ca({
     }
   },
   url: {
-    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>',
+    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_create',
     req: {
       repository: {
         type: 'string'
@@ -31553,7 +31553,7 @@ api.snapshot.prototype.create = ca({
     }
   },
   url: {
-    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>',
+    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_create',
     req: {
       repository: {
         type: 'string'
@@ -36387,7 +36387,6 @@ api.msearch = ca({
  * @param {String} params.parent - Parent id of documents. Applies to all returned documents unless otherwise specified in body "params" or "docs".
  * @param {String} params.index - The index in which the document resides.
  * @param {String} params.type - The type of the document.
- * @param {String} params.id - The id of the document.
  */
 api.mtermvectors = ca({
   params: {
@@ -37537,7 +37536,7 @@ api.snapshot.prototype.create = ca({
     }
   },
   url: {
-    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>',
+    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_create',
     req: {
       repository: {
         type: 'string'
@@ -37881,7 +37880,7 @@ api.suggest = ca({
  * @param {String} params.parent - Parent id of documents.
  * @param {String} params.index - The index in which the document resides.
  * @param {String} params.type - The type of the document.
- * @param {String} params.id - The id of the document.
+ * @param {String} params.id - The id of the document, when not specified a doc param should be supplied.
  */
 api.termvector = ca({
   params: {
@@ -37929,20 +37928,33 @@ api.termvector = ca({
       required: false
     }
   },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>/_termvector',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/<%=id%>/_termvector',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        },
+        id: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/<%=type%>/_termvector',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
       }
     }
-  },
+  ],
   method: 'POST'
 });
 
