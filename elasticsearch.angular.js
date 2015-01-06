@@ -1,6 +1,6 @@
-/*! elasticsearch - v3.0.2 - 2014-12-12
+/*! elasticsearch - v3.1.0 - 2015-01-06
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
- * Copyright (c) 2014 Elasticsearch BV; Licensed Apache 2.0 */
+ * Copyright (c) 2015 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 
 },{}],2:[function(require,module,exports){
@@ -2623,8 +2623,8 @@ function Buffer(subject, encoding, offset) {
         break;
 
       default:
-        throw new Error('First argument needs to be a number, ' +
-                        'array or string.');
+        throw new TypeError('First argument needs to be a number, ' +
+                            'array or string.');
     }
 
     // Treat array-ish objects as a byte array.
@@ -2634,7 +2634,10 @@ function Buffer(subject, encoding, offset) {
           this[i] = subject.readUInt8(i);
         }
         else {
-          this[i] = subject[i];
+          // Round-up subject[i] to a UInt8.
+          // e.g.: ((-432 % 256) + 256) % 256 = (-176 + 256) % 256
+          //                                  = 80
+          this[i] = ((subject[i] % 256) + 256) % 256;
         }
       }
     } else if (type == 'string') {
@@ -2815,9 +2818,9 @@ Buffer.prototype.hexWrite = function(string, offset, length) {
     length = strLen / 2;
   }
   for (var i = 0; i < length; i++) {
-    var byte = parseInt(string.substr(i * 2, 2), 16);
-    if (isNaN(byte)) throw new Error('Invalid hex string');
-    this[offset + i] = byte;
+    var b = parseInt(string.substr(i * 2, 2), 16);
+    if (isNaN(b)) throw new Error('Invalid hex string');
+    this[offset + i] = b;
   }
   Buffer._charsWritten = i * 2;
   return i;
@@ -2976,7 +2979,7 @@ Buffer.prototype.fill = function fill(value, start, end) {
 
 // Static methods
 Buffer.isBuffer = function isBuffer(b) {
-  return b instanceof Buffer || b instanceof Buffer;
+  return b instanceof Buffer;
 };
 
 Buffer.concat = function (list, totalLength) {
@@ -31972,6 +31975,7 @@ api.scroll = ca({
  * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
  * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
  * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
+ * @param {Number} params.terminateAfter - The maximum number of documents to collect for each shard, upon reaching which the query execution will terminate early.
  * @param {String, String[], Boolean} params.stats - Specific 'tag' of the request for logging and statistical purposes
  * @param {String} params.suggestField - Specify which field to use for suggestions
  * @param {String} [params.suggestMode=missing] - Specify suggest mode
@@ -32085,6 +32089,10 @@ api.search = ca({
     _sourceInclude: {
       type: 'list',
       name: '_source_include'
+    },
+    terminateAfter: {
+      type: 'number',
+      name: 'terminate_after'
     },
     stats: {
       type: 'list'
@@ -33960,19 +33968,19 @@ _.inherits(errors.RequestTypeError, ErrorAbstract);
 var statusCodes = {
 
   /**
-   * Service Unavailable
+   * ServiceUnavailable
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
   503: 'Service Unavailable',
 
   /**
-   * Internal Server Error
+   * InternalServerError
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
   500: 'Internal Server Error',
 
   /**
-   * Precondition Failed
+   * PreconditionFailed
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
   412: 'Precondition Failed',
@@ -33984,25 +33992,31 @@ var statusCodes = {
   409: 'Conflict',
 
   /**
-   * Forbidden
+   * AuthorizationException
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
-  403: 'Forbidden',
+  403: 'Authorization Exception',
 
   /**
-   * Not Found
+   * NotFound
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
   404: 'Not Found',
 
   /**
-   * Bad Request
+   * AuthenticationException
+   * @param {String} [msg] - An error message that will probably end up in a log.
+   */
+  401: 'Authentication Exception',
+
+  /**
+   * BadRequest
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
   400: 'Bad Request',
 
   /**
-   * Moved Permanently
+   * MovedPermanently
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
   301: 'Moved Permanently'
@@ -34012,14 +34026,13 @@ _.each(statusCodes, function (name, status) {
   var className = _.studlyCase(name);
 
   function StatusCodeError(msg) {
-    ErrorAbstract.call(this, msg || name, errors[className]);
+    ErrorAbstract.call(this, msg || name, StatusCodeError);
   }
 
   _.inherits(StatusCodeError, ErrorAbstract);
   errors[className] = StatusCodeError;
   errors[status] = StatusCodeError;
 });
-
 },{"./utils":214}],201:[function(require,module,exports){
 /**
  * Class to wrap URLS, formatting them and maintaining their separate details
@@ -34046,6 +34059,17 @@ var urlParseFields = [
 
 var simplify = ['host', 'path'];
 
+var sslDefaults = {
+  pfx: null,
+  key: null,
+  passphrase: null,
+  cert: null,
+  ca: null,
+  ciphers: null,
+  rejectUnauthorized: false,
+  secureProtocol: null
+};
+
 // simple reference used when formatting as a url
 // and defines when parsing from a string
 Host.defaultPorts = {
@@ -34066,6 +34090,8 @@ function Host(config, globalConfig) {
   this.query = null;
   this.headers = null;
   this.suggestCompression = !!globalConfig.suggestCompression;
+
+  this.ssl = _.defaults({}, config.ssl || {}, globalConfig.ssl || {}, sslDefaults);
 
   if (typeof config === 'string') {
     var firstColon = config.indexOf(':');
