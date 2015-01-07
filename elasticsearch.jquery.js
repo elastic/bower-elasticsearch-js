@@ -1,4 +1,4 @@
-/*! elasticsearch - v3.1.0 - 2015-01-06
+/*! elasticsearch - v3.1.1 - 2015-01-07
  * http://www.elasticsearch.org/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache 2.0 */
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
@@ -20397,6 +20397,7 @@ api.scroll = ca({
       fmt: '/_search/scroll'
     }
   ],
+  paramAsBody: 'scrollId',
   method: 'POST'
 });
 
@@ -26046,6 +26047,7 @@ api.scroll = ca({
       fmt: '/_search/scroll'
     }
   ],
+  paramAsBody: 'scrollId',
   method: 'POST'
 });
 
@@ -31950,6 +31952,7 @@ api.scroll = ca({
       fmt: '/_search/scroll'
     }
   ],
+  paramAsBody: 'scrollId',
   method: 'POST'
 });
 
@@ -33244,6 +33247,11 @@ function exec(transport, spec, params, cb) {
   // pass the timeout from the spec
   if (spec.requestTimeout) {
     request.requestTimeout = spec.requestTimeout;
+  }
+
+  if (!params.body && spec.paramAsBody) {
+    params.body = params[spec.paramAsBody];
+    delete params[spec.paramAsBody];
   }
 
   // verify that we have the body if needed
