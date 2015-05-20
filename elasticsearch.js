@@ -1,6 +1,9 @@
-/*! elasticsearch - v4.0.2 - 2015-03-29
+/*! elasticsearch - v4.1.0 - 2015-05-19
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache 2.0 */
+
+;(function () {
+/* prevent lodash from detecting external amd loaders */var define; 
 !function(e){"object"==typeof exports?module.exports=e():"function"==typeof define&&define.amd?define(e):"undefined"!=typeof window?window.elasticsearch=e():"undefined"!=typeof global?global.elasticsearch=e():"undefined"!=typeof self&&(self.elasticsearch=e())}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 var process=require("__browserify_process"),global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/* @preserve
  * The MIT License (MIT)
@@ -27,7 +30,7 @@ var process=require("__browserify_process"),global=typeof self !== "undefined" ?
  * 
  */
 /**
- * bluebird build version 2.9.15
+ * bluebird build version 2.9.21
  * Features enabled: core, race, call_get, generators, map, nodeify, promisify, props, reduce, settle, some, cancel, using, filter, any, each, timers
 */
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.Promise=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof _dereq_=="function"&&_dereq_;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof _dereq_=="function"&&_dereq_;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
@@ -60,11 +63,13 @@ try {throw new Error(); } catch (e) {firstLineError = e;}
 var schedule = _dereq_("./schedule.js");
 var Queue = _dereq_("./queue.js");
 var _process = typeof process !== "undefined" ? process : undefined;
+var util = _dereq_("./util.js");
 
 function Async() {
     this._isTickUsed = false;
     this._lateQueue = new Queue(16);
     this._normalQueue = new Queue(16);
+    this._trampolineEnabled = true;
     var self = this;
     this.drainQueues = function () {
         self._drainQueues();
@@ -72,6 +77,21 @@ function Async() {
     this._schedule =
         schedule.isStatic ? schedule(this.drainQueues) : schedule;
 }
+
+Async.prototype.disableTrampolineIfNecessary = function() {
+    if (util.hasDevTools) {
+        this._trampolineEnabled = false;
+    }
+};
+
+Async.prototype.enableTrampoline = function() {
+    if (!this._trampolineEnabled) {
+        this._trampolineEnabled = true;
+        this._schedule = function(fn) {
+            setTimeout(fn, 0);
+        };
+    }
+};
 
 Async.prototype.haveItemsQueued = function () {
     return this._normalQueue.length() > 0;
@@ -105,26 +125,62 @@ Async.prototype.throwLater = function(fn, arg) {
     }
 };
 
-Async.prototype.invokeLater = function (fn, receiver, arg) {
+function AsyncInvokeLater(fn, receiver, arg) {
     fn = this._withDomain(fn);
     this._lateQueue.push(fn, receiver, arg);
     this._queueTick();
-};
+}
+
+function AsyncInvoke(fn, receiver, arg) {
+    fn = this._withDomain(fn);
+    this._normalQueue.push(fn, receiver, arg);
+    this._queueTick();
+}
+
+function AsyncSettlePromises(promise) {
+    this._normalQueue._pushOne(promise);
+    this._queueTick();
+}
+
+if (!util.hasDevTools) {
+    Async.prototype.invokeLater = AsyncInvokeLater;
+    Async.prototype.invoke = AsyncInvoke;
+    Async.prototype.settlePromises = AsyncSettlePromises;
+} else {
+    Async.prototype.invokeLater = function (fn, receiver, arg) {
+        if (this._trampolineEnabled) {
+            AsyncInvokeLater.call(this, fn, receiver, arg);
+        } else {
+            setTimeout(function() {
+                fn.call(receiver, arg);
+            }, 100);
+        }
+    };
+
+    Async.prototype.invoke = function (fn, receiver, arg) {
+        if (this._trampolineEnabled) {
+            AsyncInvoke.call(this, fn, receiver, arg);
+        } else {
+            setTimeout(function() {
+                fn.call(receiver, arg);
+            }, 0);
+        }
+    };
+
+    Async.prototype.settlePromises = function(promise) {
+        if (this._trampolineEnabled) {
+            AsyncSettlePromises.call(this, promise);
+        } else {
+            setTimeout(function() {
+                promise._settlePromises();
+            }, 0);
+        }
+    };
+}
 
 Async.prototype.invokeFirst = function (fn, receiver, arg) {
     fn = this._withDomain(fn);
     this._normalQueue.unshift(fn, receiver, arg);
-    this._queueTick();
-};
-
-Async.prototype.invoke = function (fn, receiver, arg) {
-    fn = this._withDomain(fn);
-    this._normalQueue.push(fn, receiver, arg);
-    this._queueTick();
-};
-
-Async.prototype.settlePromises = function(promise) {
-    this._normalQueue._pushOne(promise);
     this._queueTick();
 };
 
@@ -161,7 +217,7 @@ Async.prototype._reset = function () {
 module.exports = new Async();
 module.exports.firstLineError = firstLineError;
 
-},{"./queue.js":28,"./schedule.js":31}],3:[function(_dereq_,module,exports){
+},{"./queue.js":28,"./schedule.js":31,"./util.js":38}],3:[function(_dereq_,module,exports){
 "use strict";
 module.exports = function(Promise, INTERNAL, tryConvertToPromise) {
 var rejectThis = function(_, e) {
@@ -402,6 +458,7 @@ Promise.prototype.cancel = function (reason) {
 
 Promise.prototype.cancellable = function () {
     if (this._cancellable()) return this;
+    async.enableTrampoline();
     this._setCancellable();
     this._cancellationParent = undefined;
     return this;
@@ -513,7 +570,7 @@ CapturedTrace.prototype.attachExtraTrace = function(error) {
     }
     removeCommonRoots(stacks);
     removeDuplicateOrEmptyJumps(stacks);
-    error.stack = reconstructStack(message, stacks);
+    util.notEnumerableProp(error, "stack", reconstructStack(message, stacks));
     util.notEnumerableProp(error, "__stackCleaned__", true);
 };
 
@@ -1038,6 +1095,10 @@ var debugging = false || (util.isNode &&
                     (!!process.env["BLUEBIRD_DEBUG"] ||
                      process.env["NODE_ENV"] === "development"));
 
+if (debugging) {
+    async.disableTrampolineIfNecessary();
+}
+
 Promise.prototype._ensurePossibleRejectionHandled = function () {
     this._setRejectionIsUnhandled();
     async.invokeLater(this._notifyUnhandledRejection, this, undefined);
@@ -1117,7 +1178,8 @@ Promise.prototype._attachExtraTrace = function (error, ignoreSelf) {
             trace.attachExtraTrace(error);
         } else if (!error.__stackCleaned__) {
             var parsed = CapturedTrace.parseStackAndMessage(error);
-            error.stack = parsed.message + "\n" + parsed.stack.join("\n");
+            util.notEnumerableProp(error, "stack",
+                parsed.message + "\n" + parsed.stack.join("\n"));
             util.notEnumerableProp(error, "__stackCleaned__", true);
         }
     }
@@ -1150,6 +1212,9 @@ Promise.longStackTraces = function () {
         throw new Error("cannot enable long stack traces after promises have been created\u000a\u000a    See http://goo.gl/DT1qyG\u000a");
     }
     debugging = CapturedTrace.isSupported();
+    if (debugging) {
+        async.disableTrampolineIfNecessary();
+    }
 };
 
 Promise.hasLongStackTraces = function () {
@@ -3772,6 +3837,10 @@ if (_dereq_("./util.js").isNode) {
         return function() { div.classList.toggle("foo"); };
     };
     schedule.isStatic = true;
+} else if (typeof setImmediate !== "undefined") {
+    schedule = function (fn) {
+        setImmediate(fn);
+    };
 } else if (typeof setTimeout !== "undefined") {
     schedule = function (fn) {
         setTimeout(fn, 0);
@@ -4673,6 +4742,8 @@ var ret = {
     markAsOriginatingFromRejection: markAsOriginatingFromRejection,
     classString: classString,
     copyDescriptors: copyDescriptors,
+    hasDevTools: typeof chrome !== "undefined" && chrome &&
+                 typeof chrome.loadTimes === "function",
     isNode: typeof process !== "undefined" &&
         classString(process).toLowerCase() === "[object process]"
 };
@@ -22994,10 +23065,12 @@ es.errors = require('./lib/errors');
 
 module.exports = es;
 
-},{"./lib/client":21,"./lib/connection_pool":24,"./lib/errors":27,"./lib/transport":39}],17:[function(require,module,exports){
+},{"./lib/client":21,"./lib/connection_pool":24,"./lib/errors":27,"./lib/transport":40}],17:[function(require,module,exports){
 /* jshint maxlen: false */
 
-var ca = require('../client_action');
+var ca = require('../client_action').factory;
+var proxy = require('../client_action').proxyFactory;
+var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
 api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
@@ -23074,9 +23147,7 @@ api.bulk = ca({
   method: 'POST'
 });
 
-api.cat = function CatNS(transport) {
-  this.transport = transport;
-};
+api.cat = namespace();
 
 /**
  * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
@@ -23757,9 +23828,7 @@ api.clearScroll = ca({
   method: 'DELETE'
 });
 
-api.cluster = function ClusterNS(transport) {
-  this.transport = transport;
-};
+api.cluster = namespace();
 
 /**
  * Perform a [cluster.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-update-settings.html) request
@@ -24880,9 +24949,7 @@ api.index = ca({
   method: 'POST'
 });
 
-api.indices = function IndicesNS(transport) {
-  this.transport = transport;
-};
+api.indices = namespace();
 
 /**
  * Perform a [indices.analyze](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-analyze.html) request
@@ -27214,9 +27281,7 @@ api.mtermvectors = ca({
   method: 'POST'
 });
 
-api.nodes = function NodesNS(transport) {
-  this.transport = transport;
-};
+api.nodes = namespace();
 
 /**
  * Perform a [nodes.hotThreads](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-nodes-hot-threads.html) request
@@ -28112,9 +28177,7 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
-api.snapshot = function SnapshotNS(transport) {
-  this.transport = transport;
-};
+api.snapshot = namespace();
 
 /**
  * Perform a [snapshot.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
@@ -28630,7 +28693,7 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = ca.proxy(api.index, {
+api.create = proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
@@ -28638,7 +28701,9 @@ api.create = ca.proxy(api.index, {
 },{"../client_action":22}],18:[function(require,module,exports){
 /* jshint maxlen: false */
 
-var ca = require('../client_action');
+var ca = require('../client_action').factory;
+var proxy = require('../client_action').proxyFactory;
+var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
 api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
@@ -28715,9 +28780,7 @@ api.bulk = ca({
   method: 'POST'
 });
 
-api.cat = function CatNS(transport) {
-  this.transport = transport;
-};
+api.cat = namespace();
 
 /**
  * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
@@ -29398,9 +29461,7 @@ api.clearScroll = ca({
   method: 'DELETE'
 });
 
-api.cluster = function ClusterNS(transport) {
-  this.transport = transport;
-};
+api.cluster = namespace();
 
 /**
  * Perform a [cluster.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/cluster-update-settings.html) request
@@ -30607,9 +30668,7 @@ api.index = ca({
   method: 'POST'
 });
 
-api.indices = function IndicesNS(transport) {
-  this.transport = transport;
-};
+api.indices = namespace();
 
 /**
  * Perform a [indices.analyze](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/indices-analyze.html) request
@@ -33175,9 +33234,7 @@ api.mtermvectors = ca({
   method: 'POST'
 });
 
-api.nodes = function NodesNS(transport) {
-  this.transport = transport;
-};
+api.nodes = namespace();
 
 /**
  * Perform a [nodes.hotThreads](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/cluster-nodes-hot-threads.html) request
@@ -34253,9 +34310,7 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
-api.snapshot = function SnapshotNS(transport) {
-  this.transport = transport;
-};
+api.snapshot = namespace();
 
 /**
  * Perform a [snapshot.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/modules-snapshots.html) request
@@ -34832,7 +34887,7 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = ca.proxy(api.index, {
+api.create = proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
@@ -34840,7 +34895,9 @@ api.create = ca.proxy(api.index, {
 },{"../client_action":22}],19:[function(require,module,exports){
 /* jshint maxlen: false */
 
-var ca = require('../client_action');
+var ca = require('../client_action').factory;
+var proxy = require('../client_action').proxyFactory;
+var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
 api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
@@ -34917,9 +34974,7 @@ api.bulk = ca({
   method: 'POST'
 });
 
-api.cat = function CatNS(transport) {
-  this.transport = transport;
-};
+api.cat = namespace();
 
 /**
  * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
@@ -35600,9 +35655,7 @@ api.clearScroll = ca({
   method: 'DELETE'
 });
 
-api.cluster = function ClusterNS(transport) {
-  this.transport = transport;
-};
+api.cluster = namespace();
 
 /**
  * Perform a [cluster.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/cluster-update-settings.html) request
@@ -36840,9 +36893,7 @@ api.index = ca({
   method: 'POST'
 });
 
-api.indices = function IndicesNS(transport) {
-  this.transport = transport;
-};
+api.indices = namespace();
 
 /**
  * Perform a [indices.analyze](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/indices-analyze.html) request
@@ -39410,9 +39461,7 @@ api.mtermvectors = ca({
   method: 'POST'
 });
 
-api.nodes = function NodesNS(transport) {
-  this.transport = transport;
-};
+api.nodes = namespace();
 
 /**
  * Perform a [nodes.hotThreads](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/cluster-nodes-hot-threads.html) request
@@ -40488,9 +40537,7 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
-api.snapshot = function SnapshotNS(transport) {
-  this.transport = transport;
-};
+api.snapshot = namespace();
 
 /**
  * Perform a [snapshot.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
@@ -41059,7 +41106,7 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = ca.proxy(api.index, {
+api.create = proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
@@ -41101,6 +41148,7 @@ module.exports = {
 module.exports = Client;
 
 var Transport = require('./transport');
+var clientAction = require('./client_action');
 var _ = require('./utils');
 
 function Client(config) {
@@ -41129,33 +41177,83 @@ function Client(config) {
 
     this.transport = new Transport(config);
 
-    // instantiate the api's namespaces
-    for (var i = 0; i < this._namespaces.length; i++) {
-      this[this._namespaces[i]] = new this[this._namespaces[i]](this.transport);
-    }
+    _.each(EsApiClient.prototype, function (Fn, prop) {
+      if (Fn.prototype instanceof clientAction.ApiNamespace) {
+        this[prop] = new Fn(this.transport);
+      }
+    }, this);
 
     delete this._namespaces;
   }
+
 
   EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.5');
   if (!config.sniffEndpoint && EsApiClient.prototype === Client.apis['0.90']) {
     config.sniffEndpoint = '/_cluster/nodes';
   }
 
-  return new EsApiClient();
+  var Constructor = EsApiClient;
+
+  if (config.plugins) {
+    Constructor.prototype = _.cloneDeep(Constructor.prototype);
+
+    _.each(config.plugins, function (setup) {
+      Constructor = setup(Constructor, config, {
+        apis: require('./apis'),
+        connectors: require('./connectors'),
+        loggers: require('./loggers'),
+        selectors: require('./selectors'),
+        serializers: require('./serializers'),
+        Client: require('./client'),
+        clientAction: clientAction,
+        Connection: require('./connection'),
+        ConnectionPool: require('./connection_pool'),
+        Errors: require('./errors'),
+        Host: require('./host'),
+        Log: require('./log'),
+        Logger: require('./logger'),
+        NodesToHost: require('./nodes_to_host'),
+        Transport: require('./transport'),
+        utils: require('./utils')
+      }) || Constructor;
+    });
+  }
+
+  return new Constructor();
 }
 
 Client.apis = require('./apis');
-},{"./apis":20,"./transport":39,"./utils":41}],22:[function(require,module,exports){
+},{"./apis":20,"./client":21,"./client_action":22,"./connection":23,"./connection_pool":24,"./connectors":25,"./errors":27,"./host":28,"./log":29,"./logger":30,"./loggers":31,"./nodes_to_host":33,"./selectors":34,"./serializers":38,"./transport":40,"./utils":42}],22:[function(require,module,exports){
+
 /**
  * Constructs a function that can be called to make a request to ES
- * @type {[type]}
+ * @type {Function}
  */
-module.exports = ClientAction;
+exports.factory = factory;
+
+/**
+ * Constructs a proxy to another api method
+ * @type {Function}
+ */
+exports.proxyFactory = proxyFactory;
+
+// export so that we can test this
+exports._resolveUrl = resolveUrl;
+
+exports.ApiNamespace = function() {};
+exports.namespaceFactory = function () {
+  function ClientNamespace(transport) {
+    this.transport = transport;
+  }
+
+  ClientNamespace.prototype = new exports.ApiNamespace();
+
+  return ClientNamespace;
+};
 
 var _ = require('./utils');
 
-function ClientAction(spec) {
+function factory(spec) {
   if (!_.isPlainObject(spec.params)) {
     spec.params = {};
   }
@@ -41189,6 +41287,24 @@ function ClientAction(spec) {
   action.spec = spec;
 
   return action;
+}
+
+function proxyFactory(fn, spec) {
+  return function (params, cb) {
+    if (typeof params === 'function') {
+      cb = params;
+      params = {};
+    } else {
+      params = params || {};
+      cb = typeof cb === 'function' ? cb : null;
+    }
+
+    if (spec.transform) {
+      spec.transform(params);
+    }
+
+    return fn.call(this, params, cb);
+  };
 }
 
 var castType = {
@@ -41337,8 +41453,6 @@ function resolveUrl(url, params) {
   }, {}));
 }
 
-// export so that we can test this
-ClientAction.resolveUrl = resolveUrl;
 
 function exec(transport, spec, params, cb) {
   var request = {
@@ -41455,27 +41569,7 @@ function commaSepList(str) {
     return i.trim();
   });
 }
-
-
-ClientAction.proxy = function (fn, spec) {
-  return function (params, cb) {
-    if (typeof params === 'function') {
-      cb = params;
-      params = {};
-    } else {
-      params = params || {};
-      cb = typeof cb === 'function' ? cb : null;
-    }
-
-    if (spec.transform) {
-      spec.transform(params);
-    }
-
-    return fn.call(this, params, cb);
-  };
-};
-
-},{"./utils":41}],23:[function(require,module,exports){
+},{"./utils":42}],23:[function(require,module,exports){
 module.exports = ConnectionAbstract;
 
 var _ = require('./utils');
@@ -41575,7 +41669,7 @@ ConnectionAbstract.prototype.setStatus = function (status) {
     this.removeAllListeners();
   }
 };
-},{"./errors":27,"./host":28,"./log":29,"./utils":41,"events":5}],24:[function(require,module,exports){
+},{"./errors":27,"./host":28,"./log":29,"./utils":42,"events":5}],24:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Manager of connections to a node(s), capable of ensuring that connections are clear and living
  * before providing them to the application
@@ -41913,7 +42007,7 @@ ConnectionPool.prototype.close = function () {
   this.setHosts([]);
 };
 ConnectionPool.prototype.empty = ConnectionPool.prototype.close;
-},{"./connectors":25,"./log":29,"./selectors":34,"./utils":41,"__browserify_process":14}],25:[function(require,module,exports){
+},{"./connectors":25,"./log":29,"./selectors":34,"./utils":42,"__browserify_process":14}],25:[function(require,module,exports){
 var opts = {
   xhr: require('./xhr'),
   jquery: require('./jquery'),
@@ -41939,7 +42033,7 @@ if (opts.xhr) {
 
 module.exports = opts;
 
-},{"../utils":41,"./angular":2,"./jquery":2,"./xhr":26}],26:[function(require,module,exports){
+},{"../utils":42,"./angular":2,"./jquery":2,"./xhr":26}],26:[function(require,module,exports){
 /**
  * Generic Transport for the browser, using the XmlHttpRequest object
  *
@@ -41995,16 +42089,21 @@ if (!getXhr) {
 XhrConnector.prototype.request = function (params, cb) {
   var xhr = getXhr();
   var timeoutId;
-  var url = this.host.makeUrl(params);
-  var headers = this.host.getHeaders(params.headers);
-
+  var host = this.host;
   var log = this.log;
+
+  var url = host.makeUrl(params);
+  var headers = host.getHeaders(params.headers);
   var async = params.async === false ? false : asyncDefault;
 
-  if (params.auth) {
-    xhr.open(params.method || 'GET', url, async, params.auth.user, params.auth.pass);
-  } else {
-    xhr.open(params.method || 'GET', url, async);
+  xhr.open(params.method || 'GET', url, async);
+
+  if (headers) {
+    for (var key in headers) {
+      if (headers[key] !== void 0) {
+        xhr.setRequestHeader(key, headers[key]);
+      }
+    }
   }
 
   xhr.onreadystatechange = function () {
@@ -42016,14 +42115,6 @@ XhrConnector.prototype.request = function (params, cb) {
     }
   };
 
-  if (headers) {
-    for (var key in headers) {
-      if (headers[key] !== void 0) {
-        xhr.setRequestHeader(key, headers[key]);
-      }
-    }
-  }
-
   xhr.send(params.body || void 0);
 
   return function () {
@@ -42031,7 +42122,7 @@ XhrConnector.prototype.request = function (params, cb) {
   };
 };
 
-},{"../connection":23,"../errors":27,"../utils":41}],27:[function(require,module,exports){
+},{"../connection":23,"../errors":27,"../utils":42}],27:[function(require,module,exports){
 var _ = require('./utils');
 var errors = module.exports;
 
@@ -42126,6 +42217,12 @@ var statusCodes = {
   503: 'Service Unavailable',
 
   /**
+   * BadGateway
+   * @param {String} [msg] - An error message that will probably end up in a log.
+   */
+  502: 'Bad Gateway',
+
+  /**
    * InternalServerError
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
@@ -42178,6 +42275,18 @@ _.each(statusCodes, function (name, status) {
   var className = _.studlyCase(name);
 
   function StatusCodeError(msg) {
+    // errors from es now come in two forms, an error string < 2.0 and
+    // an object >= 2.0
+    // TODO: remove after dropping support for < 2.0
+    if (typeof msg === 'object') {
+      msg = _.reduce(msg.root_cause, function (msg, cause) {
+        if (msg) msg += ' (and) ';
+        msg += '[' + cause.type + '] ' + cause.reason;
+        return msg;
+      }, '') || msg.reason;
+    }
+
+    this.status = status;
     ErrorAbstract.call(this, msg || name, StatusCodeError);
   }
 
@@ -42185,8 +42294,8 @@ _.each(statusCodes, function (name, status) {
   errors[className] = StatusCodeError;
   errors[status] = StatusCodeError;
 });
-},{"./utils":41}],28:[function(require,module,exports){
-/**
+},{"./utils":42}],28:[function(require,module,exports){
+var Buffer=require("__browserify_Buffer").Buffer;/**
  * Class to wrap URLS, formatting them and maintaining their separate details
  * @type {[type]}
  */
@@ -42198,12 +42307,18 @@ var _ = require('./utils');
 
 var startsWithProtocolRE = /^([a-z]+:)?\/\//;
 var defaultProto = 'http:';
+var btoa;
 
 /* jshint ignore:start */
 if (typeof window !== 'undefined') {
   defaultProto = window.location.protocol;
+  btoa = window.btoa;
 }
 /* jshint ignore:end */
+
+btoa = btoa || function (data) {
+  return (new Buffer(data, 'utf8')).toString('base64');
+};
 
 var urlParseFields = [
   'protocol', 'hostname', 'pathname', 'port', 'auth', 'query'
@@ -42230,7 +42345,7 @@ Host.defaultPorts = {
 };
 
 function Host(config, globalConfig) {
-  config = config || {};
+  config = _.clone(config || {});
   globalConfig = globalConfig || {};
 
   // defaults
@@ -42238,7 +42353,6 @@ function Host(config, globalConfig) {
   this.host = 'localhost';
   this.path = '';
   this.port = 9200;
-  this.auth = null;
   this.query = null;
   this.headers = null;
   this.suggestCompression = !!globalConfig.suggestCompression;
@@ -42285,8 +42399,14 @@ function Host(config, globalConfig) {
     config = {};
   }
 
+  if (config.auth) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = 'Basic ' + btoa(config.auth);
+    delete config.auth;
+  }
+
   _.forOwn(config, function (val, prop) {
-    if (val != null) this[prop] = val;
+    if (val != null) this[prop] = _.clone(val);
   }, this);
 
   // make sure the query string is parsed
@@ -42337,15 +42457,8 @@ Host.prototype.makeUrl = function (params) {
   // build the query string
   var query = qs.stringify(this.getQuery(params.query));
 
-  var auth = '';
-  if (params.auth) {
-    auth = params.auth + '@';
-  } else if (this.auth && params.auth !== false) {
-    auth = this.auth + '@';
-  }
-
   if (this.host) {
-    return this.protocol + '://' + auth + this.host + port + path + (query ? '?' + query : '');
+    return this.protocol + '://' + this.host + port + path + (query ? '?' + query : '');
   } else {
     return path + (query ? '?' + query : '');
   }
@@ -42388,7 +42501,7 @@ Host.prototype.toString = function () {
   return this.makeUrl();
 };
 
-},{"./utils":41,"querystring":7,"url":8}],29:[function(require,module,exports){
+},{"./utils":42,"__browserify_Buffer":13,"querystring":7,"url":8}],29:[function(require,module,exports){
 var process=require("__browserify_process");var _ = require('./utils');
 var url = require('url');
 var EventEmitter = require('events').EventEmitter;
@@ -42690,7 +42803,7 @@ Log.normalizeTraceArgs = function (method, requestUrl, body, responseBody, respo
 
 module.exports = Log;
 
-},{"./loggers":31,"./utils":41,"__browserify_process":14,"events":5,"url":8}],30:[function(require,module,exports){
+},{"./loggers":31,"./utils":42,"__browserify_process":14,"events":5,"url":8}],30:[function(require,module,exports){
 var _ = require('./utils');
 
 /**
@@ -42872,7 +42985,7 @@ LoggerAbstract.prototype._prettyJson = function (body) {
 
 module.exports = LoggerAbstract;
 
-},{"./utils":41}],31:[function(require,module,exports){
+},{"./utils":42}],31:[function(require,module,exports){
 module.exports = {
   console: require('./console')
 };
@@ -42978,7 +43091,7 @@ Console.prototype.onTrace = _.handler(function (msg) {
   this.write('TRACE', this._formatTraceMessage(msg), 'log');
 });
 
-},{"../logger":30,"../utils":41}],33:[function(require,module,exports){
+},{"../logger":30,"../utils":42}],33:[function(require,module,exports){
 var _ = require('./utils');
 var extractHostPartsRE = /\[\/*([^:]+):(\d+)\]/;
 
@@ -43012,7 +43125,7 @@ function makeNodeParser(hostProp) {
 module.exports = makeNodeParser('http_address');
 module.exports.thrift = makeNodeParser('transport_address');
 
-},{"./utils":41}],34:[function(require,module,exports){
+},{"./utils":42}],34:[function(require,module,exports){
 module.exports = {
   random: require('./random'),
   roundRobin: require('./round_robin')
@@ -43068,7 +43181,13 @@ AngularSerializer.prototype.encode = function (val) {
 };
 
 module.exports = AngularSerializer;
-},{"../serializers/json":38,"../utils":41}],38:[function(require,module,exports){
+},{"../serializers/json":39,"../utils":42}],38:[function(require,module,exports){
+module.exports = {
+  angular: require('./angular'),
+  json: require('./json')
+};
+
+},{"./angular":37,"./json":39}],39:[function(require,module,exports){
 /**
  * Simple JSON serializer
  * @type {[type]}
@@ -43129,7 +43248,7 @@ Json.prototype.bulkBody = function (val) {
   return body;
 };
 
-},{"../utils":41}],39:[function(require,module,exports){
+},{"../utils":42}],40:[function(require,module,exports){
 /**
  * Class that manages making request, called by all of the API methods.
  * @type {[type]}
@@ -43223,10 +43342,7 @@ Transport.connectionPools = {
   main: require('./connection_pool')
 };
 
-Transport.serializers = {
-  json: require('./serializers/json'),
-  angular: require('./serializers/angular')
-};
+Transport.serializers = require('./serializers');
 
 Transport.nodesToHostCallbacks = {
   main: require('./nodes_to_host')
@@ -43511,7 +43627,7 @@ Transport.prototype.close = function () {
   this.connectionPool.close();
 };
 
-},{"./connection_pool":24,"./errors":27,"./host":28,"./log":29,"./nodes_to_host":33,"./serializers/angular":37,"./serializers/json":38,"./transport/sniff_on_connection_fault":40,"./utils":41,"bluebird":1}],40:[function(require,module,exports){
+},{"./connection_pool":24,"./errors":27,"./host":28,"./log":29,"./nodes_to_host":33,"./serializers":38,"./transport/sniff_on_connection_fault":41,"./utils":42,"bluebird":1}],41:[function(require,module,exports){
 var _ = require('../utils');
 
 
@@ -43571,7 +43687,7 @@ module.exports = function setupSniffOnConnectionFault(transport) {
     pool._onConnectionDied = originalOnDied;
   };
 };
-},{"../utils":41}],41:[function(require,module,exports){
+},{"../utils":42}],42:[function(require,module,exports){
 var process=require("__browserify_process"),Buffer=require("__browserify_Buffer").Buffer;var path = require('path');
 var _ = require('lodash');
 var nodeUtils = require('util');
@@ -44022,3 +44138,4 @@ module.exports = utils;
 (16)
 });
 ;
+}());

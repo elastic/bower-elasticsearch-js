@@ -1,6 +1,9 @@
-/*! elasticsearch - v4.0.2 - 2015-03-29
+/*! elasticsearch - v4.1.0 - 2015-05-19
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache 2.0 */
+
+;(function () {
+/* prevent lodash from detecting external amd loaders */var define; 
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 
 },{}],2:[function(require,module,exports){
@@ -18331,10 +18334,12 @@ angular.module('elasticsearch', [])
     return factory;
   }]);
 
-},{"./lib/client":20,"./lib/connection_pool":23,"./lib/connectors/angular":24,"./lib/errors":26,"./lib/transport":38,"__browserify_process":13}],16:[function(require,module,exports){
+},{"./lib/client":20,"./lib/connection_pool":23,"./lib/connectors/angular":24,"./lib/errors":26,"./lib/transport":39,"__browserify_process":13}],16:[function(require,module,exports){
 /* jshint maxlen: false */
 
-var ca = require('../client_action');
+var ca = require('../client_action').factory;
+var proxy = require('../client_action').proxyFactory;
+var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
 api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
@@ -18411,9 +18416,7 @@ api.bulk = ca({
   method: 'POST'
 });
 
-api.cat = function CatNS(transport) {
-  this.transport = transport;
-};
+api.cat = namespace();
 
 /**
  * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
@@ -19094,9 +19097,7 @@ api.clearScroll = ca({
   method: 'DELETE'
 });
 
-api.cluster = function ClusterNS(transport) {
-  this.transport = transport;
-};
+api.cluster = namespace();
 
 /**
  * Perform a [cluster.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-update-settings.html) request
@@ -20217,9 +20218,7 @@ api.index = ca({
   method: 'POST'
 });
 
-api.indices = function IndicesNS(transport) {
-  this.transport = transport;
-};
+api.indices = namespace();
 
 /**
  * Perform a [indices.analyze](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-analyze.html) request
@@ -22551,9 +22550,7 @@ api.mtermvectors = ca({
   method: 'POST'
 });
 
-api.nodes = function NodesNS(transport) {
-  this.transport = transport;
-};
+api.nodes = namespace();
 
 /**
  * Perform a [nodes.hotThreads](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-nodes-hot-threads.html) request
@@ -23449,9 +23446,7 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
-api.snapshot = function SnapshotNS(transport) {
-  this.transport = transport;
-};
+api.snapshot = namespace();
 
 /**
  * Perform a [snapshot.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
@@ -23967,7 +23962,7 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = ca.proxy(api.index, {
+api.create = proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
@@ -23975,7 +23970,9 @@ api.create = ca.proxy(api.index, {
 },{"../client_action":21}],17:[function(require,module,exports){
 /* jshint maxlen: false */
 
-var ca = require('../client_action');
+var ca = require('../client_action').factory;
+var proxy = require('../client_action').proxyFactory;
+var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
 api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
@@ -24052,9 +24049,7 @@ api.bulk = ca({
   method: 'POST'
 });
 
-api.cat = function CatNS(transport) {
-  this.transport = transport;
-};
+api.cat = namespace();
 
 /**
  * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
@@ -24735,9 +24730,7 @@ api.clearScroll = ca({
   method: 'DELETE'
 });
 
-api.cluster = function ClusterNS(transport) {
-  this.transport = transport;
-};
+api.cluster = namespace();
 
 /**
  * Perform a [cluster.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/cluster-update-settings.html) request
@@ -25944,9 +25937,7 @@ api.index = ca({
   method: 'POST'
 });
 
-api.indices = function IndicesNS(transport) {
-  this.transport = transport;
-};
+api.indices = namespace();
 
 /**
  * Perform a [indices.analyze](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/indices-analyze.html) request
@@ -28512,9 +28503,7 @@ api.mtermvectors = ca({
   method: 'POST'
 });
 
-api.nodes = function NodesNS(transport) {
-  this.transport = transport;
-};
+api.nodes = namespace();
 
 /**
  * Perform a [nodes.hotThreads](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/cluster-nodes-hot-threads.html) request
@@ -29590,9 +29579,7 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
-api.snapshot = function SnapshotNS(transport) {
-  this.transport = transport;
-};
+api.snapshot = namespace();
 
 /**
  * Perform a [snapshot.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.4/modules-snapshots.html) request
@@ -30169,7 +30156,7 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = ca.proxy(api.index, {
+api.create = proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
@@ -30177,7 +30164,9 @@ api.create = ca.proxy(api.index, {
 },{"../client_action":21}],18:[function(require,module,exports){
 /* jshint maxlen: false */
 
-var ca = require('../client_action');
+var ca = require('../client_action').factory;
+var proxy = require('../client_action').proxyFactory;
+var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
 api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
@@ -30254,9 +30243,7 @@ api.bulk = ca({
   method: 'POST'
 });
 
-api.cat = function CatNS(transport) {
-  this.transport = transport;
-};
+api.cat = namespace();
 
 /**
  * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
@@ -30937,9 +30924,7 @@ api.clearScroll = ca({
   method: 'DELETE'
 });
 
-api.cluster = function ClusterNS(transport) {
-  this.transport = transport;
-};
+api.cluster = namespace();
 
 /**
  * Perform a [cluster.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/cluster-update-settings.html) request
@@ -32177,9 +32162,7 @@ api.index = ca({
   method: 'POST'
 });
 
-api.indices = function IndicesNS(transport) {
-  this.transport = transport;
-};
+api.indices = namespace();
 
 /**
  * Perform a [indices.analyze](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/indices-analyze.html) request
@@ -34747,9 +34730,7 @@ api.mtermvectors = ca({
   method: 'POST'
 });
 
-api.nodes = function NodesNS(transport) {
-  this.transport = transport;
-};
+api.nodes = namespace();
 
 /**
  * Perform a [nodes.hotThreads](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/cluster-nodes-hot-threads.html) request
@@ -35825,9 +35806,7 @@ api.searchTemplate = ca({
   method: 'POST'
 });
 
-api.snapshot = function SnapshotNS(transport) {
-  this.transport = transport;
-};
+api.snapshot = namespace();
 
 /**
  * Perform a [snapshot.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
@@ -36396,7 +36375,7 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = ca.proxy(api.index, {
+api.create = proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
@@ -36438,6 +36417,7 @@ module.exports = {
 module.exports = Client;
 
 var Transport = require('./transport');
+var clientAction = require('./client_action');
 var _ = require('./utils');
 
 function Client(config) {
@@ -36466,33 +36446,83 @@ function Client(config) {
 
     this.transport = new Transport(config);
 
-    // instantiate the api's namespaces
-    for (var i = 0; i < this._namespaces.length; i++) {
-      this[this._namespaces[i]] = new this[this._namespaces[i]](this.transport);
-    }
+    _.each(EsApiClient.prototype, function (Fn, prop) {
+      if (Fn.prototype instanceof clientAction.ApiNamespace) {
+        this[prop] = new Fn(this.transport);
+      }
+    }, this);
 
     delete this._namespaces;
   }
+
 
   EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.5');
   if (!config.sniffEndpoint && EsApiClient.prototype === Client.apis['0.90']) {
     config.sniffEndpoint = '/_cluster/nodes';
   }
 
-  return new EsApiClient();
+  var Constructor = EsApiClient;
+
+  if (config.plugins) {
+    Constructor.prototype = _.cloneDeep(Constructor.prototype);
+
+    _.each(config.plugins, function (setup) {
+      Constructor = setup(Constructor, config, {
+        apis: require('./apis'),
+        connectors: require('./connectors'),
+        loggers: require('./loggers'),
+        selectors: require('./selectors'),
+        serializers: require('./serializers'),
+        Client: require('./client'),
+        clientAction: clientAction,
+        Connection: require('./connection'),
+        ConnectionPool: require('./connection_pool'),
+        Errors: require('./errors'),
+        Host: require('./host'),
+        Log: require('./log'),
+        Logger: require('./logger'),
+        NodesToHost: require('./nodes_to_host'),
+        Transport: require('./transport'),
+        utils: require('./utils')
+      }) || Constructor;
+    });
+  }
+
+  return new Constructor();
 }
 
 Client.apis = require('./apis');
-},{"./apis":19,"./transport":38,"./utils":40}],21:[function(require,module,exports){
+},{"./apis":19,"./client":20,"./client_action":21,"./connection":22,"./connection_pool":23,"./connectors":25,"./errors":26,"./host":27,"./log":28,"./logger":29,"./loggers":30,"./nodes_to_host":32,"./selectors":33,"./serializers":37,"./transport":39,"./utils":41}],21:[function(require,module,exports){
+
 /**
  * Constructs a function that can be called to make a request to ES
- * @type {[type]}
+ * @type {Function}
  */
-module.exports = ClientAction;
+exports.factory = factory;
+
+/**
+ * Constructs a proxy to another api method
+ * @type {Function}
+ */
+exports.proxyFactory = proxyFactory;
+
+// export so that we can test this
+exports._resolveUrl = resolveUrl;
+
+exports.ApiNamespace = function() {};
+exports.namespaceFactory = function () {
+  function ClientNamespace(transport) {
+    this.transport = transport;
+  }
+
+  ClientNamespace.prototype = new exports.ApiNamespace();
+
+  return ClientNamespace;
+};
 
 var _ = require('./utils');
 
-function ClientAction(spec) {
+function factory(spec) {
   if (!_.isPlainObject(spec.params)) {
     spec.params = {};
   }
@@ -36526,6 +36556,24 @@ function ClientAction(spec) {
   action.spec = spec;
 
   return action;
+}
+
+function proxyFactory(fn, spec) {
+  return function (params, cb) {
+    if (typeof params === 'function') {
+      cb = params;
+      params = {};
+    } else {
+      params = params || {};
+      cb = typeof cb === 'function' ? cb : null;
+    }
+
+    if (spec.transform) {
+      spec.transform(params);
+    }
+
+    return fn.call(this, params, cb);
+  };
 }
 
 var castType = {
@@ -36674,8 +36722,6 @@ function resolveUrl(url, params) {
   }, {}));
 }
 
-// export so that we can test this
-ClientAction.resolveUrl = resolveUrl;
 
 function exec(transport, spec, params, cb) {
   var request = {
@@ -36792,27 +36838,7 @@ function commaSepList(str) {
     return i.trim();
   });
 }
-
-
-ClientAction.proxy = function (fn, spec) {
-  return function (params, cb) {
-    if (typeof params === 'function') {
-      cb = params;
-      params = {};
-    } else {
-      params = params || {};
-      cb = typeof cb === 'function' ? cb : null;
-    }
-
-    if (spec.transform) {
-      spec.transform(params);
-    }
-
-    return fn.call(this, params, cb);
-  };
-};
-
-},{"./utils":40}],22:[function(require,module,exports){
+},{"./utils":41}],22:[function(require,module,exports){
 module.exports = ConnectionAbstract;
 
 var _ = require('./utils');
@@ -36912,7 +36938,7 @@ ConnectionAbstract.prototype.setStatus = function (status) {
     this.removeAllListeners();
   }
 };
-},{"./errors":26,"./host":27,"./log":28,"./utils":40,"events":4}],23:[function(require,module,exports){
+},{"./errors":26,"./host":27,"./log":28,"./utils":41,"events":4}],23:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Manager of connections to a node(s), capable of ensuring that connections are clear and living
  * before providing them to the application
@@ -37250,8 +37276,8 @@ ConnectionPool.prototype.close = function () {
   this.setHosts([]);
 };
 ConnectionPool.prototype.empty = ConnectionPool.prototype.close;
-},{"./connectors":25,"./log":28,"./selectors":33,"./utils":40,"__browserify_process":13}],24:[function(require,module,exports){
-var Buffer=require("__browserify_Buffer").Buffer;/**
+},{"./connectors":25,"./log":28,"./selectors":33,"./utils":41,"__browserify_process":13}],24:[function(require,module,exports){
+/**
  * Connection that registers a module with angular, using angular's $http service
  * to communicate with ES.
  *
@@ -37263,37 +37289,20 @@ var _ = require('../utils');
 var ConnectionAbstract = require('../connection');
 var ConnectionFault = require('../errors').ConnectionFault;
 
-function makeAuthHeader(auth) {
-  return 'Basic ' + (new Buffer(auth, 'utf8')).toString('base64');
-}
-
 function AngularConnector(host, config) {
   ConnectionAbstract.call(this, host, config);
+
   var self = this;
-  self.headerDefaults = {};
-
-  if (self.host.auth) {
-    self.headerDefaults.Authorization = makeAuthHeader(self.host.auth);
-  }
-
   config.$injector.invoke(['$http', '$q', function ($http, $q) {
     self.$q = $q;
     self.$http = $http;
   }]);
+
 }
 _.inherits(AngularConnector, ConnectionAbstract);
 
-AngularConnector.prototype.request = function (userParams, cb) {
+AngularConnector.prototype.request = function (params, cb) {
   var abort = this.$q.defer();
-  var params = _.cloneDeep(userParams);
-
-  params.headers = _.defaults(params.headers || {}, this.headerDefaults);
-  if (params.auth) {
-    params.headers.Authorization = makeAuthHeader(params.auth);
-  }
-
-  // inform the host not to use the auth, by overriding it in the params
-  params.auth = false;
 
   this.$http({
     method: params.method,
@@ -37319,7 +37328,7 @@ AngularConnector.prototype.request = function (userParams, cb) {
     abort.resolve();
   };
 };
-},{"../connection":22,"../errors":26,"../utils":40,"__browserify_Buffer":12}],25:[function(require,module,exports){
+},{"../connection":22,"../errors":26,"../utils":41}],25:[function(require,module,exports){
 var opts = {
   xhr: require('./xhr'),
   jquery: require('./jquery'),
@@ -37345,7 +37354,7 @@ if (opts.xhr) {
 
 module.exports = opts;
 
-},{"../utils":40,"./angular":24,"./jquery":1,"./xhr":1}],26:[function(require,module,exports){
+},{"../utils":41,"./angular":24,"./jquery":1,"./xhr":1}],26:[function(require,module,exports){
 var _ = require('./utils');
 var errors = module.exports;
 
@@ -37440,6 +37449,12 @@ var statusCodes = {
   503: 'Service Unavailable',
 
   /**
+   * BadGateway
+   * @param {String} [msg] - An error message that will probably end up in a log.
+   */
+  502: 'Bad Gateway',
+
+  /**
    * InternalServerError
    * @param {String} [msg] - An error message that will probably end up in a log.
    */
@@ -37492,6 +37507,18 @@ _.each(statusCodes, function (name, status) {
   var className = _.studlyCase(name);
 
   function StatusCodeError(msg) {
+    // errors from es now come in two forms, an error string < 2.0 and
+    // an object >= 2.0
+    // TODO: remove after dropping support for < 2.0
+    if (typeof msg === 'object') {
+      msg = _.reduce(msg.root_cause, function (msg, cause) {
+        if (msg) msg += ' (and) ';
+        msg += '[' + cause.type + '] ' + cause.reason;
+        return msg;
+      }, '') || msg.reason;
+    }
+
+    this.status = status;
     ErrorAbstract.call(this, msg || name, StatusCodeError);
   }
 
@@ -37499,8 +37526,8 @@ _.each(statusCodes, function (name, status) {
   errors[className] = StatusCodeError;
   errors[status] = StatusCodeError;
 });
-},{"./utils":40}],27:[function(require,module,exports){
-/**
+},{"./utils":41}],27:[function(require,module,exports){
+var Buffer=require("__browserify_Buffer").Buffer;/**
  * Class to wrap URLS, formatting them and maintaining their separate details
  * @type {[type]}
  */
@@ -37512,12 +37539,18 @@ var _ = require('./utils');
 
 var startsWithProtocolRE = /^([a-z]+:)?\/\//;
 var defaultProto = 'http:';
+var btoa;
 
 /* jshint ignore:start */
 if (typeof window !== 'undefined') {
   defaultProto = window.location.protocol;
+  btoa = window.btoa;
 }
 /* jshint ignore:end */
+
+btoa = btoa || function (data) {
+  return (new Buffer(data, 'utf8')).toString('base64');
+};
 
 var urlParseFields = [
   'protocol', 'hostname', 'pathname', 'port', 'auth', 'query'
@@ -37544,7 +37577,7 @@ Host.defaultPorts = {
 };
 
 function Host(config, globalConfig) {
-  config = config || {};
+  config = _.clone(config || {});
   globalConfig = globalConfig || {};
 
   // defaults
@@ -37552,7 +37585,6 @@ function Host(config, globalConfig) {
   this.host = 'localhost';
   this.path = '';
   this.port = 9200;
-  this.auth = null;
   this.query = null;
   this.headers = null;
   this.suggestCompression = !!globalConfig.suggestCompression;
@@ -37599,8 +37631,14 @@ function Host(config, globalConfig) {
     config = {};
   }
 
+  if (config.auth) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = 'Basic ' + btoa(config.auth);
+    delete config.auth;
+  }
+
   _.forOwn(config, function (val, prop) {
-    if (val != null) this[prop] = val;
+    if (val != null) this[prop] = _.clone(val);
   }, this);
 
   // make sure the query string is parsed
@@ -37651,15 +37689,8 @@ Host.prototype.makeUrl = function (params) {
   // build the query string
   var query = qs.stringify(this.getQuery(params.query));
 
-  var auth = '';
-  if (params.auth) {
-    auth = params.auth + '@';
-  } else if (this.auth && params.auth !== false) {
-    auth = this.auth + '@';
-  }
-
   if (this.host) {
-    return this.protocol + '://' + auth + this.host + port + path + (query ? '?' + query : '');
+    return this.protocol + '://' + this.host + port + path + (query ? '?' + query : '');
   } else {
     return path + (query ? '?' + query : '');
   }
@@ -37702,7 +37733,7 @@ Host.prototype.toString = function () {
   return this.makeUrl();
 };
 
-},{"./utils":40,"querystring":6,"url":7}],28:[function(require,module,exports){
+},{"./utils":41,"__browserify_Buffer":12,"querystring":6,"url":7}],28:[function(require,module,exports){
 var process=require("__browserify_process");var _ = require('./utils');
 var url = require('url');
 var EventEmitter = require('events').EventEmitter;
@@ -38004,7 +38035,7 @@ Log.normalizeTraceArgs = function (method, requestUrl, body, responseBody, respo
 
 module.exports = Log;
 
-},{"./loggers":30,"./utils":40,"__browserify_process":13,"events":4,"url":7}],29:[function(require,module,exports){
+},{"./loggers":30,"./utils":41,"__browserify_process":13,"events":4,"url":7}],29:[function(require,module,exports){
 var _ = require('./utils');
 
 /**
@@ -38186,7 +38217,7 @@ LoggerAbstract.prototype._prettyJson = function (body) {
 
 module.exports = LoggerAbstract;
 
-},{"./utils":40}],30:[function(require,module,exports){
+},{"./utils":41}],30:[function(require,module,exports){
 module.exports = {
   console: require('./console')
 };
@@ -38292,7 +38323,7 @@ Console.prototype.onTrace = _.handler(function (msg) {
   this.write('TRACE', this._formatTraceMessage(msg), 'log');
 });
 
-},{"../logger":29,"../utils":40}],32:[function(require,module,exports){
+},{"../logger":29,"../utils":41}],32:[function(require,module,exports){
 var _ = require('./utils');
 var extractHostPartsRE = /\[\/*([^:]+):(\d+)\]/;
 
@@ -38326,7 +38357,7 @@ function makeNodeParser(hostProp) {
 module.exports = makeNodeParser('http_address');
 module.exports.thrift = makeNodeParser('transport_address');
 
-},{"./utils":40}],33:[function(require,module,exports){
+},{"./utils":41}],33:[function(require,module,exports){
 module.exports = {
   random: require('./random'),
   roundRobin: require('./round_robin')
@@ -38382,7 +38413,13 @@ AngularSerializer.prototype.encode = function (val) {
 };
 
 module.exports = AngularSerializer;
-},{"../serializers/json":37,"../utils":40}],37:[function(require,module,exports){
+},{"../serializers/json":38,"../utils":41}],37:[function(require,module,exports){
+module.exports = {
+  angular: require('./angular'),
+  json: require('./json')
+};
+
+},{"./angular":36,"./json":38}],38:[function(require,module,exports){
 /**
  * Simple JSON serializer
  * @type {[type]}
@@ -38443,7 +38480,7 @@ Json.prototype.bulkBody = function (val) {
   return body;
 };
 
-},{"../utils":40}],38:[function(require,module,exports){
+},{"../utils":41}],39:[function(require,module,exports){
 /**
  * Class that manages making request, called by all of the API methods.
  * @type {[type]}
@@ -38537,10 +38574,7 @@ Transport.connectionPools = {
   main: require('./connection_pool')
 };
 
-Transport.serializers = {
-  json: require('./serializers/json'),
-  angular: require('./serializers/angular')
-};
+Transport.serializers = require('./serializers');
 
 Transport.nodesToHostCallbacks = {
   main: require('./nodes_to_host')
@@ -38825,7 +38859,7 @@ Transport.prototype.close = function () {
   this.connectionPool.close();
 };
 
-},{"./connection_pool":23,"./errors":26,"./host":27,"./log":28,"./nodes_to_host":32,"./serializers/angular":36,"./serializers/json":37,"./transport/sniff_on_connection_fault":39,"./utils":40,"bluebird":1}],39:[function(require,module,exports){
+},{"./connection_pool":23,"./errors":26,"./host":27,"./log":28,"./nodes_to_host":32,"./serializers":37,"./transport/sniff_on_connection_fault":40,"./utils":41,"bluebird":1}],40:[function(require,module,exports){
 var _ = require('../utils');
 
 
@@ -38885,7 +38919,7 @@ module.exports = function setupSniffOnConnectionFault(transport) {
     pool._onConnectionDied = originalOnDied;
   };
 };
-},{"../utils":40}],40:[function(require,module,exports){
+},{"../utils":41}],41:[function(require,module,exports){
 var process=require("__browserify_process"),Buffer=require("__browserify_Buffer").Buffer;var path = require('path');
 var _ = require('lodash');
 var nodeUtils = require('util');
@@ -39334,3 +39368,4 @@ module.exports = utils;
 
 },{"__browserify_Buffer":12,"__browserify_process":13,"lodash":14,"path":5,"util":8}]},{},[15])
 ;
+}());
