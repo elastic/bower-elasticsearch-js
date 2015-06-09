@@ -1,4 +1,4 @@
-/*! elasticsearch - v4.1.0 - 2015-05-19
+/*! elasticsearch - v5.0.0 - 2015-06-09
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache 2.0 */
 
@@ -30,7 +30,7 @@ var process=require("__browserify_process"),global=typeof self !== "undefined" ?
  * 
  */
 /**
- * bluebird build version 2.9.21
+ * bluebird build version 2.9.27
  * Features enabled: core, race, call_get, generators, map, nodeify, promisify, props, reduce, settle, some, cancel, using, filter, any, each, timers
 */
 !function(e){if("object"==typeof exports&&"undefined"!=typeof module)module.exports=e();else if("function"==typeof define&&define.amd)define([],e);else{var f;"undefined"!=typeof window?f=window:"undefined"!=typeof global?f=global:"undefined"!=typeof self&&(f=self),f.Promise=e()}}(function(){var define,module,exports;return (function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof _dereq_=="function"&&_dereq_;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof _dereq_=="function"&&_dereq_;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(_dereq_,module,exports){
@@ -62,7 +62,6 @@ var firstLineError;
 try {throw new Error(); } catch (e) {firstLineError = e;}
 var schedule = _dereq_("./schedule.js");
 var Queue = _dereq_("./queue.js");
-var _process = typeof process !== "undefined" ? process : undefined;
 var util = _dereq_("./util.js");
 
 function Async() {
@@ -97,21 +96,13 @@ Async.prototype.haveItemsQueued = function () {
     return this._normalQueue.length() > 0;
 };
 
-Async.prototype._withDomain = function(fn) {
-    if (_process !== undefined &&
-        _process.domain != null &&
-        !fn.domain) {
-        fn = _process.domain.bind(fn);
-    }
-    return fn;
-};
-
 Async.prototype.throwLater = function(fn, arg) {
     if (arguments.length === 1) {
         arg = fn;
         fn = function () { throw arg; };
     }
-    fn = this._withDomain(fn);
+    var domain = this._getDomain();
+    if (domain !== undefined) fn = domain.bind(fn);
     if (typeof setTimeout !== "undefined") {
         setTimeout(function() {
             fn(arg);
@@ -125,20 +116,73 @@ Async.prototype.throwLater = function(fn, arg) {
     }
 };
 
+Async.prototype._getDomain = function() {};
+
+if (!true) {
+if (util.isNode) {
+    var EventsModule = _dereq_("events");
+
+    var domainGetter = function() {
+        var domain = process.domain;
+        if (domain === null) return undefined;
+        return domain;
+    };
+
+    if (EventsModule.usingDomains) {
+        Async.prototype._getDomain = domainGetter;
+    } else {
+        var descriptor =
+            Object.getOwnPropertyDescriptor(EventsModule, "usingDomains");
+
+        if (descriptor) {
+            if (!descriptor.configurable) {
+                process.on("domainsActivated", function() {
+                    Async.prototype._getDomain = domainGetter;
+                });
+            } else {
+                var usingDomains = false;
+                Object.defineProperty(EventsModule, "usingDomains", {
+                    configurable: false,
+                    enumerable: true,
+                    get: function() {
+                        return usingDomains;
+                    },
+                    set: function(value) {
+                        if (usingDomains || !value) return;
+                        usingDomains = true;
+                        Async.prototype._getDomain = domainGetter;
+                        util.toFastProperties(process);
+                        process.emit("domainsActivated");
+                    }
+                });
+            }
+        }
+    }
+}
+}
+
 function AsyncInvokeLater(fn, receiver, arg) {
-    fn = this._withDomain(fn);
+    var domain = this._getDomain();
+    if (domain !== undefined) fn = domain.bind(fn);
     this._lateQueue.push(fn, receiver, arg);
     this._queueTick();
 }
 
 function AsyncInvoke(fn, receiver, arg) {
-    fn = this._withDomain(fn);
+    var domain = this._getDomain();
+    if (domain !== undefined) fn = domain.bind(fn);
     this._normalQueue.push(fn, receiver, arg);
     this._queueTick();
 }
 
 function AsyncSettlePromises(promise) {
-    this._normalQueue._pushOne(promise);
+    var domain = this._getDomain();
+    if (domain !== undefined) {
+        var fn = domain.bind(promise._settlePromises);
+        this._normalQueue.push(fn, promise, undefined);
+    } else {
+        this._normalQueue._pushOne(promise);
+    }
     this._queueTick();
 }
 
@@ -179,7 +223,8 @@ if (!util.hasDevTools) {
 }
 
 Async.prototype.invokeFirst = function (fn, receiver, arg) {
-    fn = this._withDomain(fn);
+    var domain = this._getDomain();
+    if (domain !== undefined) fn = domain.bind(fn);
     this._normalQueue.unshift(fn, receiver, arg);
     this._queueTick();
 };
@@ -217,7 +262,7 @@ Async.prototype._reset = function () {
 module.exports = new Async();
 module.exports.firstLineError = firstLineError;
 
-},{"./queue.js":28,"./schedule.js":31,"./util.js":38}],3:[function(_dereq_,module,exports){
+},{"./queue.js":28,"./schedule.js":31,"./util.js":38,"events":39}],3:[function(_dereq_,module,exports){
 "use strict";
 module.exports = function(Promise, INTERNAL, tryConvertToPromise) {
 var rejectThis = function(_, e) {
@@ -1244,6 +1289,10 @@ var returner = function () {
 var thrower = function () {
     throw this;
 };
+var returnUndefined = function() {};
+var throwUndefined = function() {
+    throw undefined;
+};
 
 var wrapper = function (value, action) {
     if (action === 1) {
@@ -1260,6 +1309,8 @@ var wrapper = function (value, action) {
 
 Promise.prototype["return"] =
 Promise.prototype.thenReturn = function (value) {
+    if (value === undefined) return this.then(returnUndefined);
+
     if (wrapsPrimitiveReceiver && isPrimitive(value)) {
         return this._then(
             wrapper(value, 2),
@@ -1274,6 +1325,8 @@ Promise.prototype.thenReturn = function (value) {
 
 Promise.prototype["throw"] =
 Promise.prototype.thenThrow = function (reason) {
+    if (reason === undefined) return this.then(throwUndefined);
+
     if (wrapsPrimitiveReceiver && isPrimitive(reason)) {
         return this._then(
             wrapper(reason, 1),
@@ -3160,7 +3213,7 @@ var TypeError = _dereq_("./errors").TypeError;
 var defaultSuffix = "Async";
 var defaultPromisified = {__isPromisified__: true};
 var noCopyPropsPattern =
-    /^(?:length|name|arguments|caller|prototype|__isPromisified__)$/;
+    /^(?:length|name|arguments|caller|callee|prototype|__isPromisified__)$/;
 var defaultFilter = function(name, func) {
     return util.isIdentifier(name) &&
         name.charAt(0) !== "_" &&
@@ -3812,23 +3865,16 @@ Promise.reduce = function (promises, fn, initialValue, _each) {
 },{"./async.js":2,"./util.js":38}],31:[function(_dereq_,module,exports){
 "use strict";
 var schedule;
+var util = _dereq_("./util");
 var noAsyncScheduler = function() {
     throw new Error("No async scheduler available\u000a\u000a    See http://goo.gl/m3OTXk\u000a");
 };
-if (_dereq_("./util.js").isNode) {
-    var version = process.versions.node.split(".").map(Number);
-    schedule = (version[0] === 0 && version[1] > 10) || (version[0] > 0)
-        ? global.setImmediate : process.nextTick;
-
-    if (!schedule) {
-        if (typeof setImmediate !== "undefined") {
-            schedule = setImmediate;
-        } else if (typeof setTimeout !== "undefined") {
-            schedule = setTimeout;
-        } else {
-            schedule = noAsyncScheduler;
-        }
-    }
+if (util.isNode && typeof MutationObserver === "undefined") {
+    var GlobalSetImmediate = global.setImmediate;
+    var ProcessNextTick = process.nextTick;
+    schedule = util.isRecentNode
+                ? function(fn) { GlobalSetImmediate.call(global, fn); }
+                : function(fn) { ProcessNextTick.call(process, fn); };
 } else if (typeof MutationObserver !== "undefined") {
     schedule = function(fn) {
         var div = document.createElement("div");
@@ -3850,7 +3896,7 @@ if (_dereq_("./util.js").isNode) {
 }
 module.exports = schedule;
 
-},{"./util.js":38}],32:[function(_dereq_,module,exports){
+},{"./util":38}],32:[function(_dereq_,module,exports){
 "use strict";
 module.exports =
     function(Promise, PromiseArray) {
@@ -4641,10 +4687,12 @@ function isClass(fn) {
 }
 
 function toFastProperties(obj) {
-    /*jshint -W027*/
+    /*jshint -W027,-W055,-W031*/
     function f() {}
     f.prototype = obj;
-    return f;
+    var l = 8;
+    while (l--) new f();
+    return obj;
     eval(obj);
 }
 
@@ -4747,10 +4795,317 @@ var ret = {
     isNode: typeof process !== "undefined" &&
         classString(process).toLowerCase() === "[object process]"
 };
+ret.isRecentNode = ret.isNode && (function() {
+    var version = process.versions.node.split(".").map(Number);
+    return (version[0] === 0 && version[1] > 10) || (version[0] > 0);
+})();
 try {throw new Error(); } catch (e) {ret.lastLineError = e;}
 module.exports = ret;
 
-},{"./es5.js":14}]},{},[4])(4)
+},{"./es5.js":14}],39:[function(_dereq_,module,exports){
+// Copyright Joyent, Inc. and other Node contributors.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a
+// copy of this software and associated documentation files (the
+// "Software"), to deal in the Software without restriction, including
+// without limitation the rights to use, copy, modify, merge, publish,
+// distribute, sublicense, and/or sell copies of the Software, and to permit
+// persons to whom the Software is furnished to do so, subject to the
+// following conditions:
+//
+// The above copyright notice and this permission notice shall be included
+// in all copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS
+// OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN
+// NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM,
+// DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR
+// OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE
+// USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+function EventEmitter() {
+  this._events = this._events || {};
+  this._maxListeners = this._maxListeners || undefined;
+}
+module.exports = EventEmitter;
+
+// Backwards-compat with node 0.10.x
+EventEmitter.EventEmitter = EventEmitter;
+
+EventEmitter.prototype._events = undefined;
+EventEmitter.prototype._maxListeners = undefined;
+
+// By default EventEmitters will print a warning if more than 10 listeners are
+// added to it. This is a useful default which helps finding memory leaks.
+EventEmitter.defaultMaxListeners = 10;
+
+// Obviously not all Emitters should be limited to 10. This function allows
+// that to be increased. Set to zero for unlimited.
+EventEmitter.prototype.setMaxListeners = function(n) {
+  if (!isNumber(n) || n < 0 || isNaN(n))
+    throw TypeError('n must be a positive number');
+  this._maxListeners = n;
+  return this;
+};
+
+EventEmitter.prototype.emit = function(type) {
+  var er, handler, len, args, i, listeners;
+
+  if (!this._events)
+    this._events = {};
+
+  // If there is no 'error' event listener then throw.
+  if (type === 'error') {
+    if (!this._events.error ||
+        (isObject(this._events.error) && !this._events.error.length)) {
+      er = arguments[1];
+      if (er instanceof Error) {
+        throw er; // Unhandled 'error' event
+      }
+      throw TypeError('Uncaught, unspecified "error" event.');
+    }
+  }
+
+  handler = this._events[type];
+
+  if (isUndefined(handler))
+    return false;
+
+  if (isFunction(handler)) {
+    switch (arguments.length) {
+      // fast cases
+      case 1:
+        handler.call(this);
+        break;
+      case 2:
+        handler.call(this, arguments[1]);
+        break;
+      case 3:
+        handler.call(this, arguments[1], arguments[2]);
+        break;
+      // slower
+      default:
+        len = arguments.length;
+        args = new Array(len - 1);
+        for (i = 1; i < len; i++)
+          args[i - 1] = arguments[i];
+        handler.apply(this, args);
+    }
+  } else if (isObject(handler)) {
+    len = arguments.length;
+    args = new Array(len - 1);
+    for (i = 1; i < len; i++)
+      args[i - 1] = arguments[i];
+
+    listeners = handler.slice();
+    len = listeners.length;
+    for (i = 0; i < len; i++)
+      listeners[i].apply(this, args);
+  }
+
+  return true;
+};
+
+EventEmitter.prototype.addListener = function(type, listener) {
+  var m;
+
+  if (!isFunction(listener))
+    throw TypeError('listener must be a function');
+
+  if (!this._events)
+    this._events = {};
+
+  // To avoid recursion in the case that type === "newListener"! Before
+  // adding it to the listeners, first emit "newListener".
+  if (this._events.newListener)
+    this.emit('newListener', type,
+              isFunction(listener.listener) ?
+              listener.listener : listener);
+
+  if (!this._events[type])
+    // Optimize the case of one listener. Don't need the extra array object.
+    this._events[type] = listener;
+  else if (isObject(this._events[type]))
+    // If we've already got an array, just append.
+    this._events[type].push(listener);
+  else
+    // Adding the second element, need to change to array.
+    this._events[type] = [this._events[type], listener];
+
+  // Check for listener leak
+  if (isObject(this._events[type]) && !this._events[type].warned) {
+    var m;
+    if (!isUndefined(this._maxListeners)) {
+      m = this._maxListeners;
+    } else {
+      m = EventEmitter.defaultMaxListeners;
+    }
+
+    if (m && m > 0 && this._events[type].length > m) {
+      this._events[type].warned = true;
+      console.error('(node) warning: possible EventEmitter memory ' +
+                    'leak detected. %d listeners added. ' +
+                    'Use emitter.setMaxListeners() to increase limit.',
+                    this._events[type].length);
+      if (typeof console.trace === 'function') {
+        // not supported in IE 10
+        console.trace();
+      }
+    }
+  }
+
+  return this;
+};
+
+EventEmitter.prototype.on = EventEmitter.prototype.addListener;
+
+EventEmitter.prototype.once = function(type, listener) {
+  if (!isFunction(listener))
+    throw TypeError('listener must be a function');
+
+  var fired = false;
+
+  function g() {
+    this.removeListener(type, g);
+
+    if (!fired) {
+      fired = true;
+      listener.apply(this, arguments);
+    }
+  }
+
+  g.listener = listener;
+  this.on(type, g);
+
+  return this;
+};
+
+// emits a 'removeListener' event iff the listener was removed
+EventEmitter.prototype.removeListener = function(type, listener) {
+  var list, position, length, i;
+
+  if (!isFunction(listener))
+    throw TypeError('listener must be a function');
+
+  if (!this._events || !this._events[type])
+    return this;
+
+  list = this._events[type];
+  length = list.length;
+  position = -1;
+
+  if (list === listener ||
+      (isFunction(list.listener) && list.listener === listener)) {
+    delete this._events[type];
+    if (this._events.removeListener)
+      this.emit('removeListener', type, listener);
+
+  } else if (isObject(list)) {
+    for (i = length; i-- > 0;) {
+      if (list[i] === listener ||
+          (list[i].listener && list[i].listener === listener)) {
+        position = i;
+        break;
+      }
+    }
+
+    if (position < 0)
+      return this;
+
+    if (list.length === 1) {
+      list.length = 0;
+      delete this._events[type];
+    } else {
+      list.splice(position, 1);
+    }
+
+    if (this._events.removeListener)
+      this.emit('removeListener', type, listener);
+  }
+
+  return this;
+};
+
+EventEmitter.prototype.removeAllListeners = function(type) {
+  var key, listeners;
+
+  if (!this._events)
+    return this;
+
+  // not listening for removeListener, no need to emit
+  if (!this._events.removeListener) {
+    if (arguments.length === 0)
+      this._events = {};
+    else if (this._events[type])
+      delete this._events[type];
+    return this;
+  }
+
+  // emit removeListener for all listeners on all events
+  if (arguments.length === 0) {
+    for (key in this._events) {
+      if (key === 'removeListener') continue;
+      this.removeAllListeners(key);
+    }
+    this.removeAllListeners('removeListener');
+    this._events = {};
+    return this;
+  }
+
+  listeners = this._events[type];
+
+  if (isFunction(listeners)) {
+    this.removeListener(type, listeners);
+  } else {
+    // LIFO order
+    while (listeners.length)
+      this.removeListener(type, listeners[listeners.length - 1]);
+  }
+  delete this._events[type];
+
+  return this;
+};
+
+EventEmitter.prototype.listeners = function(type) {
+  var ret;
+  if (!this._events || !this._events[type])
+    ret = [];
+  else if (isFunction(this._events[type]))
+    ret = [this._events[type]];
+  else
+    ret = this._events[type].slice();
+  return ret;
+};
+
+EventEmitter.listenerCount = function(emitter, type) {
+  var ret;
+  if (!emitter._events || !emitter._events[type])
+    ret = 0;
+  else if (isFunction(emitter._events[type]))
+    ret = 1;
+  else
+    ret = emitter._events[type].length;
+  return ret;
+};
+
+function isFunction(arg) {
+  return typeof arg === 'function';
+}
+
+function isNumber(arg) {
+  return typeof arg === 'number';
+}
+
+function isObject(arg) {
+  return typeof arg === 'object' && arg !== null;
+}
+
+function isUndefined(arg) {
+  return arg === void 0;
+}
+
+},{}]},{},[4])(4)
 });                    ;if (typeof window !== 'undefined' && window !== null) {                               window.P = window.Promise;                                                     } else if (typeof self !== 'undefined' && self !== null) {                             self.P = self.Promise;                                                         }
 },{"__browserify_process":14}],2:[function(require,module,exports){
 
@@ -11011,10 +11366,10 @@ process.chdir = function (dir) {
 },{}],15:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * @license
- * lodash 3.6.0 (Custom Build) <https://lodash.com/>
+ * lodash 3.9.3 (Custom Build) <https://lodash.com/>
  * Build: `lodash compat -d -o ./index.js`
  * Copyright 2012-2015 The Dojo Foundation <http://dojofoundation.org/>
- * Based on Underscore.js 1.8.2 <http://underscorejs.org/LICENSE>
+ * Based on Underscore.js 1.8.3 <http://underscorejs.org/LICENSE>
  * Copyright 2009-2015 Jeremy Ashkenas, DocumentCloud and Investigative Reporters & Editors
  * Available under MIT license <https://lodash.com/license>
  */
@@ -11024,7 +11379,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   var undefined;
 
   /** Used as the semantic version number. */
-  var VERSION = '3.6.0';
+  var VERSION = '3.9.3';
 
   /** Used to compose bitmasks for wrapper metadata. */
   var BIND_FLAG = 1,
@@ -11098,30 +11453,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       reEvaluate = /<%([\s\S]+?)%>/g,
       reInterpolate = /<%=([\s\S]+?)%>/g;
 
-  /**
-   * Used to match [combining diacritical marks](https://en.wikipedia.org/wiki/Combining_Diacritical_Marks).
-   */
-  var reComboMarks = /[\u0300-\u036f\ufe20-\ufe23]/g;
-
-  /**
-   * Used to match [ES template delimiters](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-template-literal-lexical-components).
-   */
-  var reEsTemplate = /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g;
-
-  /** Used to match `RegExp` flags from their coerced string values. */
-  var reFlags = /\w*$/;
-
-  /** Used to detect hexadecimal string values. */
-  var reHexPrefix = /^0[xX]/;
-
-  /** Used to detect host constructors (Safari > 5). */
-  var reHostCtor = /^\[object .+?Constructor\]$/;
-
-  /** Used to match latin-1 supplementary letters (excluding mathematical operators). */
-  var reLatin1 = /[\xc0-\xd6\xd8-\xde\xdf-\xf6\xf8-\xff]/g;
-
-  /** Used to ensure capturing order of template delimiters. */
-  var reNoMatch = /($^)/;
+  /** Used to match property names within property paths. */
+  var reIsDeepProp = /\.|\[(?:[^[\]]*|(["'])(?:(?!\1)[^\n\\]|\\.)*?\1)\]/,
+      reIsPlainProp = /^\w*$/,
+      rePropName = /[^.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\n\\]|\\.)*?)\2)\]/g;
 
   /**
    * Used to match `RegExp` [special characters](http://www.regular-expressions.info/characters.html#special).
@@ -11130,6 +11465,33 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
    */
   var reRegExpChars = /[.*+?^${}()|[\]\/\\]/g,
       reHasRegExpChars = RegExp(reRegExpChars.source);
+
+  /** Used to match [combining diacritical marks](https://en.wikipedia.org/wiki/Combining_Diacritical_Marks). */
+  var reComboMark = /[\u0300-\u036f\ufe20-\ufe23]/g;
+
+  /** Used to match backslashes in property paths. */
+  var reEscapeChar = /\\(\\)?/g;
+
+  /** Used to match [ES template delimiters](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-template-literal-lexical-components). */
+  var reEsTemplate = /\$\{([^\\}]*(?:\\.[^\\}]*)*)\}/g;
+
+  /** Used to match `RegExp` flags from their coerced string values. */
+  var reFlags = /\w*$/;
+
+  /** Used to detect hexadecimal string values. */
+  var reHasHexPrefix = /^0[xX]/;
+
+  /** Used to detect host constructors (Safari > 5). */
+  var reIsHostCtor = /^\[object .+?Constructor\]$/;
+
+  /** Used to detect unsigned integer values. */
+  var reIsUint = /^\d+$/;
+
+  /** Used to match latin-1 supplementary letters (excluding mathematical operators). */
+  var reLatin1 = /[\xc0-\xd6\xd8-\xde\xdf-\xf6\xf8-\xff]/g;
+
+  /** Used to ensure capturing order of template delimiters. */
+  var reNoMatch = /($^)/;
 
   /** Used to match unescaped characters in compiled string literals. */
   var reUnescapedString = /['\n\r\u2028\u2029\\]/g;
@@ -11159,9 +11521,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     'Array', 'ArrayBuffer', 'Date', 'Error', 'Float32Array', 'Float64Array',
     'Function', 'Int8Array', 'Int16Array', 'Int32Array', 'Math', 'Number',
     'Object', 'RegExp', 'Set', 'String', '_', 'clearTimeout', 'document',
-    'isFinite', 'parseInt', 'setTimeout', 'TypeError', 'Uint8Array',
-    'Uint8ClampedArray', 'Uint16Array', 'Uint32Array', 'WeakMap',
-    'window'
+    'isFinite', 'parseFloat', 'parseInt', 'setTimeout', 'TypeError', 'Uint8Array',
+    'Uint8ClampedArray', 'Uint16Array', 'Uint32Array', 'WeakMap', 'window'
   ];
 
   /** Used to fix the JScript `[[DontEnum]]` bug. */
@@ -11274,7 +11635,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   var freeModule = objectTypes[typeof module] && module && !module.nodeType && module;
 
   /** Detect free variable `global` from Node.js. */
-  var freeGlobal = freeExports && freeModule && typeof global == 'object' && global;
+  var freeGlobal = freeExports && freeModule && typeof global == 'object' && global && global.Object && global;
 
   /** Detect free variable `self`. */
   var freeSelf = objectTypes[typeof self] && self && self.Object && self;
@@ -11288,7 +11649,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   /**
    * Used as a reference to the global object.
    *
-   * The `this` value is used if it is the global object to avoid Greasemonkey's
+   * The `this` value is used if it's the global object to avoid Greasemonkey's
    * restricted `window` object, otherwise the `window` object is used.
    */
   var root = freeGlobal || ((freeWindow !== (this && this.window)) && freeWindow) || freeSelf || this;
@@ -11300,19 +11661,28 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
    * sorts them in ascending order without guaranteeing a stable sort.
    *
    * @private
-   * @param {*} value The value to compare to `other`.
-   * @param {*} other The value to compare to `value`.
+   * @param {*} value The value to compare.
+   * @param {*} other The other value to compare.
    * @returns {number} Returns the sort order indicator for `value`.
    */
   function baseCompareAscending(value, other) {
     if (value !== other) {
-      var valIsReflexive = value === value,
+      var valIsNull = value === null,
+          valIsUndef = value === undefined,
+          valIsReflexive = value === value;
+
+      var othIsNull = other === null,
+          othIsUndef = other === undefined,
           othIsReflexive = other === other;
 
-      if (value > other || !valIsReflexive || (typeof value == 'undefined' && othIsReflexive)) {
+      if ((value > other && !othIsNull) || !valIsReflexive ||
+          (valIsNull && !othIsUndef && othIsReflexive) ||
+          (valIsUndef && othIsReflexive)) {
         return 1;
       }
-      if (value < other || !othIsReflexive || (typeof other == 'undefined' && valIsReflexive)) {
+      if ((value < other && !valIsNull) || !othIsReflexive ||
+          (othIsNull && !valIsUndef && valIsReflexive) ||
+          (othIsUndef && valIsReflexive)) {
         return -1;
       }
     }
@@ -11380,7 +11750,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   }
 
   /**
-   * Converts `value` to a string if it is not one. An empty string is returned
+   * Converts `value` to a string if it's not one. An empty string is returned
    * for `null` or `undefined` values.
    *
    * @private
@@ -11392,17 +11762,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       return value;
     }
     return value == null ? '' : (value + '');
-  }
-
-  /**
-   * Used by `_.max` and `_.min` as the default callback for string values.
-   *
-   * @private
-   * @param {string} string The string to inspect.
-   * @returns {number} Returns the code unit of the first character of the string.
-   */
-  function charAtCallback(string) {
-    return string.charCodeAt(0);
   }
 
   /**
@@ -11455,7 +11814,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
    * Used by `_.sortByOrder` to compare multiple properties of each element
    * in a collection and stable sort them in the following order:
    *
-   * If orders is unspecified, sort in ascending order for all properties.
+   * If `orders` is unspecified, sort in ascending order for all properties.
    * Otherwise, for each property, sort in ascending order if its corresponding value in
    * orders is true, and descending order if false.
    *
@@ -11748,13 +12107,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         stringProto = String.prototype;
 
     /** Used to detect DOM support. */
-    var document = (document = context.window) && document.document;
+    var document = (document = context.window) ? document.document : null;
 
     /** Used to resolve the decompiled source of functions. */
     var fnToString = Function.prototype.toString;
-
-    /** Used to the length of n-tuples for `_.unzip`. */
-    var getLength = baseProperty('length');
 
     /** Used to check objects for own properties. */
     var hasOwnProperty = objectProto.hasOwnProperty;
@@ -11772,25 +12128,26 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     var oldDash = context._;
 
     /** Used to detect if a method is native. */
-    var reNative = RegExp('^' +
-      escapeRegExp(objToString)
-      .replace(/toString|(function).*?(?=\\\()| for .+?(?=\\\])/g, '$1.*?') + '$'
+    var reIsNative = RegExp('^' +
+      escapeRegExp(fnToString.call(hasOwnProperty))
+      .replace(/hasOwnProperty|(function).*?(?=\\\()| for .+?(?=\\\])/g, '$1.*?') + '$'
     );
 
     /** Native method references. */
-    var ArrayBuffer = isNative(ArrayBuffer = context.ArrayBuffer) && ArrayBuffer,
-        bufferSlice = isNative(bufferSlice = ArrayBuffer && new ArrayBuffer(0).slice) && bufferSlice,
+    var ArrayBuffer = getNative(context, 'ArrayBuffer'),
+        bufferSlice = getNative(ArrayBuffer && new ArrayBuffer(0), 'slice'),
         ceil = Math.ceil,
         clearTimeout = context.clearTimeout,
         floor = Math.floor,
-        getPrototypeOf = isNative(getPrototypeOf = Object.getPrototypeOf) && getPrototypeOf,
+        getPrototypeOf = getNative(Object, 'getPrototypeOf'),
+        parseFloat = context.parseFloat,
         push = arrayProto.push,
         propertyIsEnumerable = objectProto.propertyIsEnumerable,
-        Set = isNative(Set = context.Set) && Set,
+        Set = getNative(context, 'Set'),
         setTimeout = context.setTimeout,
         splice = arrayProto.splice,
-        Uint8Array = isNative(Uint8Array = context.Uint8Array) && Uint8Array,
-        WeakMap = isNative(WeakMap = context.WeakMap) && WeakMap;
+        Uint8Array = getNative(context, 'Uint8Array'),
+        WeakMap = getNative(context, 'WeakMap');
 
     /** Used to clone array buffers. */
     var Float64Array = (function() {
@@ -11798,21 +12155,21 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       // where the array buffer's `byteLength` is not a multiple of the typed
       // array's `BYTES_PER_ELEMENT`.
       try {
-        var func = isNative(func = context.Float64Array) && func,
+        var func = getNative(context, 'Float64Array'),
             result = new func(new ArrayBuffer(10), 0, 1) && func;
       } catch(e) {}
-      return result;
+      return result || null;
     }());
 
     /* Native method references for those with the same name as other `lodash` methods. */
-    var nativeIsArray = isNative(nativeIsArray = Array.isArray) && nativeIsArray,
-        nativeCreate = isNative(nativeCreate = Object.create) && nativeCreate,
+    var nativeCreate = getNative(Object, 'create'),
+        nativeIsArray = getNative(Array, 'isArray'),
         nativeIsFinite = context.isFinite,
-        nativeKeys = isNative(nativeKeys = Object.keys) && nativeKeys,
+        nativeKeys = getNative(Object, 'keys'),
         nativeMax = Math.max,
         nativeMin = Math.min,
-        nativeNow = isNative(nativeNow = Date.now) && nativeNow,
-        nativeNumIsFinite = isNative(nativeNumIsFinite = Number.isFinite) && nativeNumIsFinite,
+        nativeNow = getNative(Date, 'now'),
+        nativeNumIsFinite = getNative(Number, 'isFinite'),
         nativeParseInt = context.parseInt,
         nativeRandom = Math.random;
 
@@ -11821,8 +12178,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         POSITIVE_INFINITY = Number.POSITIVE_INFINITY;
 
     /** Used as references for the maximum length and index of an array. */
-    var MAX_ARRAY_LENGTH = Math.pow(2, 32) - 1,
-        MAX_ARRAY_INDEX =  MAX_ARRAY_LENGTH - 1,
+    var MAX_ARRAY_LENGTH = 4294967295,
+        MAX_ARRAY_INDEX = MAX_ARRAY_LENGTH - 1,
         HALF_MAX_ARRAY_LENGTH = MAX_ARRAY_LENGTH >>> 1;
 
     /** Used as the size, in bytes, of each `Float64Array` element. */
@@ -11832,7 +12189,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * Used as the [maximum length](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-number.max_safe_integer)
      * of an array-like value.
      */
-    var MAX_SAFE_INTEGER = Math.pow(2, 53) - 1;
+    var MAX_SAFE_INTEGER = 9007199254740991;
 
     /** Used to store function metadata. */
     var metaMap = WeakMap && new WeakMap;
@@ -11909,30 +12266,31 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * `filter`, `flatten`, `flattenDeep`, `flow`, `flowRight`, `forEach`,
      * `forEachRight`, `forIn`, `forInRight`, `forOwn`, `forOwnRight`, `functions`,
      * `groupBy`, `indexBy`, `initial`, `intersection`, `invert`, `invoke`, `keys`,
-     * `keysIn`, `map`, `mapValues`, `matches`, `matchesProperty`, `memoize`, `merge`,
-     * `mixin`, `negate`, `noop`, `omit`, `once`, `pairs`, `partial`, `partialRight`,
-     * `partition`, `pick`, `plant`, `pluck`, `property`, `propertyOf`, `pull`,
-     * `pullAt`, `push`, `range`, `rearg`, `reject`, `remove`, `rest`, `reverse`,
-     * `shuffle`, `slice`, `sort`, `sortBy`, `sortByAll`, `sortByOrder`, `splice`,
-     * `spread`, `take`, `takeRight`, `takeRightWhile`, `takeWhile`, `tap`,
-     * `throttle`, `thru`, `times`, `toArray`, `toPlainObject`, `transform`,
-     * `union`, `uniq`, `unshift`, `unzip`, `values`, `valuesIn`, `where`,
-     * `without`, `wrap`, `xor`, `zip`, and `zipObject`
+     * `keysIn`, `map`, `mapKeys`, `mapValues`, `matches`, `matchesProperty`,
+     * `memoize`, `merge`, `method`, `methodOf`, `mixin`, `negate`, `omit`, `once`,
+     * `pairs`, `partial`, `partialRight`, `partition`, `pick`, `plant`, `pluck`,
+     * `property`, `propertyOf`, `pull`, `pullAt`, `push`, `range`, `rearg`,
+     * `reject`, `remove`, `rest`, `restParam`, `reverse`, `set`, `shuffle`,
+     * `slice`, `sort`, `sortBy`, `sortByAll`, `sortByOrder`, `splice`, `spread`,
+     * `take`, `takeRight`, `takeRightWhile`, `takeWhile`, `tap`, `throttle`,
+     * `thru`, `times`, `toArray`, `toPlainObject`, `transform`, `union`, `uniq`,
+     * `unshift`, `unzip`, `unzipWith`, `values`, `valuesIn`, `where`, `without`,
+     * `wrap`, `xor`, `zip`, `zipObject`, `zipWith`
      *
      * The wrapper methods that are **not** chainable by default are:
      * `add`, `attempt`, `camelCase`, `capitalize`, `clone`, `cloneDeep`, `deburr`,
      * `endsWith`, `escape`, `escapeRegExp`, `every`, `find`, `findIndex`, `findKey`,
-     * `findLast`, `findLastIndex`, `findLastKey`, `findWhere`, `first`, `has`,
-     * `identity`, `includes`, `indexOf`, `inRange`, `isArguments`, `isArray`,
-     * `isBoolean`, `isDate`, `isElement`, `isEmpty`, `isEqual`, `isError`,
-     * `isFinite`,`isFunction`, `isMatch`, `isNative`, `isNaN`, `isNull`, `isNumber`,
+     * `findLast`, `findLastIndex`, `findLastKey`, `findWhere`, `first`, `get`,
+     * `gt`, `gte`, `has`, `identity`, `includes`, `indexOf`, `inRange`, `isArguments`,
+     * `isArray`, `isBoolean`, `isDate`, `isElement`, `isEmpty`, `isEqual`, `isError`,
+     * `isFinite` `isFunction`, `isMatch`, `isNative`, `isNaN`, `isNull`, `isNumber`,
      * `isObject`, `isPlainObject`, `isRegExp`, `isString`, `isUndefined`,
-     * `isTypedArray`, `join`, `kebabCase`, `last`, `lastIndexOf`, `max`, `min`,
-     * `noConflict`, `now`, `pad`, `padLeft`, `padRight`, `parseInt`, `pop`,
-     * `random`, `reduce`, `reduceRight`, `repeat`, `result`, `runInContext`,
-     * `shift`, `size`, `snakeCase`, `some`, `sortedIndex`, `sortedLastIndex`,
-     * `startCase`, `startsWith`, `sum`, `template`, `trim`, `trimLeft`,
-     * `trimRight`, `trunc`, `unescape`, `uniqueId`, `value`, and `words`
+     * `isTypedArray`, `join`, `kebabCase`, `last`, `lastIndexOf`, `lt`, `lte`,
+     * `max`, `min`, `noConflict`, `noop`, `now`, `pad`, `padLeft`, `padRight`,
+     * `parseInt`, `pop`, `random`, `reduce`, `reduceRight`, `repeat`, `result`,
+     * `runInContext`, `shift`, `size`, `snakeCase`, `some`, `sortedIndex`,
+     * `sortedLastIndex`, `startCase`, `startsWith`, `sum`, `template`, `trim`,
+     * `trimLeft`, `trimRight`, `trunc`, `unescape`, `uniqueId`, `value`, and `words`
      *
      * The wrapper method `sample` will return a wrapped value when `n` is provided,
      * otherwise an unwrapped value is returned.
@@ -11947,8 +12305,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * var wrapped = _([1, 2, 3]);
      *
      * // returns an unwrapped value
-     * wrapped.reduce(function(sum, n) {
-     *   return sum + n;
+     * wrapped.reduce(function(total, n) {
+     *   return total + n;
      * });
      * // => 6
      *
@@ -12008,11 +12366,11 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     var support = lodash.support = {};
 
     (function(x) {
-      var Ctor = function() { this.x = 1; },
-          object = { '0': 1, 'length': 1 },
+      var Ctor = function() { this.x = x; },
+          object = { '0': x, 'length': x },
           props = [];
 
-      Ctor.prototype = { 'valueOf': 1, 'y': 1 };
+      Ctor.prototype = { 'valueOf': x, 'y': x };
       for (var key in new Ctor) { props.push(key); }
 
       /**
@@ -12048,24 +12406,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       support.enumPrototypes = propertyIsEnumerable.call(Ctor, 'prototype');
 
       /**
-       * Detect if functions can be decompiled by `Function#toString`
-       * (all but Firefox OS certified apps, older Opera mobile browsers, and
-       * the PlayStation 3; forced `false` for Windows 8 apps).
-       *
-       * @memberOf _.support
-       * @type boolean
-       */
-      support.funcDecomp = /\bthis\b/.test(function() { return this; });
-
-      /**
-       * Detect if `Function#name` is supported (all but IE).
-       *
-       * @memberOf _.support
-       * @type boolean
-       */
-      support.funcNames = typeof Function.name == 'string';
-
-      /**
        * Detect if the `toStringTag` of DOM nodes is resolvable (all but IE < 9).
        *
        * @memberOf _.support
@@ -12074,17 +12414,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       support.nodeTag = objToString.call(document) != objectTag;
 
       /**
-       * Detect if string indexes are non-enumerable
-       * (IE < 9, RingoJS, Rhino, Narwhal).
-       *
-       * @memberOf _.support
-       * @type boolean
-       */
-      support.nonEnumStrings = !propertyIsEnumerable.call('x', 0);
-
-      /**
-       * Detect if properties shadowing those on `Object.prototype` are
-       * non-enumerable.
+       * Detect if properties shadowing those on `Object.prototype` are non-enumerable.
        *
        * In IE < 9 an object's own properties, shadowing non-enumerable ones,
        * are made non-enumerable as well (a.k.a the JScript `[[DontEnum]]` bug).
@@ -12106,11 +12436,11 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
        * Detect if `Array#shift` and `Array#splice` augment array-like objects
        * correctly.
        *
-       * Firefox < 10, compatibility modes of IE 8, and IE < 9 have buggy Array `shift()`
-       * and `splice()` functions that fail to remove the last element, `value[0]`,
-       * of array-like objects even though the `length` property is set to `0`.
-       * The `shift()` method is buggy in compatibility modes of IE 8, while `splice()`
-       * is buggy regardless of mode in IE < 9.
+       * Firefox < 10, compatibility modes of IE 8, and IE < 9 have buggy Array
+       * `shift()` and `splice()` functions that fail to remove the last element,
+       * `value[0]`, of array-like objects even though the "length" property is
+       * set to `0`. The `shift()` method is buggy in compatibility modes of IE 8,
+       * while `splice()` is buggy regardless of mode in IE < 9.
        *
        * @memberOf _.support
        * @type boolean
@@ -12139,25 +12469,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       } catch(e) {
         support.dom = false;
       }
-
-      /**
-       * Detect if `arguments` object indexes are non-enumerable.
-       *
-       * In Firefox < 4, IE < 9, PhantomJS, and Safari < 5.1 `arguments` object
-       * indexes are non-enumerable. Chrome < 25 and Node.js < 0.11.0 treat
-       * `arguments` object indexes as non-enumerable and fail `hasOwnProperty`
-       * checks for indexes that exceed their function's formal parameters with
-       * associated values of `0`.
-       *
-       * @memberOf _.support
-       * @type boolean
-       */
-      try {
-        support.nonEnumArgs = !propertyIsEnumerable.call(arguments, 1);
-      } catch(e) {
-        support.nonEnumArgs = true;
-      }
-    }(0, 0));
+    }(1, 0));
 
     /**
      * By default, the template delimiters used by lodash are like those in
@@ -12404,7 +12716,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Adds `value` to `key` of the cache.
+     * Sets `value` to `key` of the cache.
      *
      * @private
      * @name set
@@ -12556,6 +12868,35 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
+     * A specialized version of `baseExtremum` for arrays which invokes `iteratee`
+     * with one argument: (value).
+     *
+     * @private
+     * @param {Array} array The array to iterate over.
+     * @param {Function} iteratee The function invoked per iteration.
+     * @param {Function} comparator The function used to compare values.
+     * @param {*} exValue The initial extremum value.
+     * @returns {*} Returns the extremum value.
+     */
+    function arrayExtremum(array, iteratee, comparator, exValue) {
+      var index = -1,
+          length = array.length,
+          computed = exValue,
+          result = computed;
+
+      while (++index < length) {
+        var value = array[index],
+            current = +iteratee(value);
+
+        if (comparator(current, computed)) {
+          computed = current;
+          result = value;
+        }
+      }
+      return result;
+    }
+
+    /**
      * A specialized version of `_.filter` for arrays without support for callback
      * shorthands and `this` binding.
      *
@@ -12595,48 +12936,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
 
       while (++index < length) {
         result[index] = iteratee(array[index], index, array);
-      }
-      return result;
-    }
-
-    /**
-     * A specialized version of `_.max` for arrays without support for iteratees.
-     *
-     * @private
-     * @param {Array} array The array to iterate over.
-     * @returns {*} Returns the maximum value.
-     */
-    function arrayMax(array) {
-      var index = -1,
-          length = array.length,
-          result = NEGATIVE_INFINITY;
-
-      while (++index < length) {
-        var value = array[index];
-        if (value > result) {
-          result = value;
-        }
-      }
-      return result;
-    }
-
-    /**
-     * A specialized version of `_.min` for arrays without support for iteratees.
-     *
-     * @private
-     * @param {Array} array The array to iterate over.
-     * @returns {*} Returns the minimum value.
-     */
-    function arrayMin(array) {
-      var index = -1,
-          length = array.length,
-          result = POSITIVE_INFINITY;
-
-      while (++index < length) {
-        var value = array[index];
-        if (value < result) {
-          result = value;
-        }
       }
       return result;
     }
@@ -12737,13 +13036,13 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {*} Returns the value to assign to the destination object.
      */
     function assignDefaults(objectValue, sourceValue) {
-      return typeof objectValue == 'undefined' ? sourceValue : objectValue;
+      return objectValue === undefined ? sourceValue : objectValue;
     }
 
     /**
      * Used by `_.template` to customize its `_.assign` use.
      *
-     * **Note:** This method is like `assignDefaults` except that it ignores
+     * **Note:** This function is like `assignDefaults` except that it ignores
      * inherited property values when checking if a property is `undefined`.
      *
      * @private
@@ -12754,27 +13053,25 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {*} Returns the value to assign to the destination object.
      */
     function assignOwnDefaults(objectValue, sourceValue, key, object) {
-      return (typeof objectValue == 'undefined' || !hasOwnProperty.call(object, key))
+      return (objectValue === undefined || !hasOwnProperty.call(object, key))
         ? sourceValue
         : objectValue;
     }
 
     /**
-     * The base implementation of `_.assign` without support for argument juggling,
-     * multiple sources, and `this` binding `customizer` functions.
+     * A specialized version of `_.assign` for customizing assigned values without
+     * support for argument juggling, multiple sources, and `this` binding `customizer`
+     * functions.
      *
      * @private
      * @param {Object} object The destination object.
      * @param {Object} source The source object.
-     * @param {Function} [customizer] The function to customize assigning values.
-     * @returns {Object} Returns the destination object.
+     * @param {Function} customizer The function to customize assigned values.
+     * @returns {Object} Returns `object`.
      */
-    function baseAssign(object, source, customizer) {
-      var props = keys(source);
-      if (!customizer) {
-        return baseCopy(source, object, props);
-      }
+    function assignWith(object, source, customizer) {
       var index = -1,
+          props = keys(source),
           length = props.length;
 
       while (++index < length) {
@@ -12783,7 +13080,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
             result = customizer(value, source[key], key, object, source);
 
         if ((result === result ? (result !== value) : (value === value)) ||
-            (typeof value == 'undefined' && !(key in object))) {
+            (value === undefined && !(key in object))) {
           object[key] = result;
         }
       }
@@ -12791,47 +13088,60 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * The base implementation of `_.at` without support for strings and individual
-     * key arguments.
+     * The base implementation of `_.assign` without support for argument juggling,
+     * multiple sources, and `customizer` functions.
+     *
+     * @private
+     * @param {Object} object The destination object.
+     * @param {Object} source The source object.
+     * @returns {Object} Returns `object`.
+     */
+    function baseAssign(object, source) {
+      return source == null
+        ? object
+        : baseCopy(source, keys(source), object);
+    }
+
+    /**
+     * The base implementation of `_.at` without support for string collections
+     * and individual key arguments.
      *
      * @private
      * @param {Array|Object} collection The collection to iterate over.
-     * @param {number[]|string[]} [props] The property names or indexes of elements to pick.
+     * @param {number[]|string[]} props The property names or indexes of elements to pick.
      * @returns {Array} Returns the new array of picked elements.
      */
     function baseAt(collection, props) {
       var index = -1,
-          length = collection.length,
-          isArr = isLength(length),
+          isNil = collection == null,
+          isArr = !isNil && isArrayLike(collection),
+          length = isArr ? collection.length : 0,
           propsLength = props.length,
           result = Array(propsLength);
 
       while(++index < propsLength) {
         var key = props[index];
         if (isArr) {
-          key = parseFloat(key);
           result[index] = isIndex(key, length) ? collection[key] : undefined;
         } else {
-          result[index] = collection[key];
+          result[index] = isNil ? undefined : collection[key];
         }
       }
       return result;
     }
 
     /**
-     * Copies the properties of `source` to `object`.
+     * Copies properties of `source` to `object`.
      *
      * @private
      * @param {Object} source The object to copy properties from.
-     * @param {Object} [object={}] The object to copy properties to.
      * @param {Array} props The property names to copy.
+     * @param {Object} [object={}] The object to copy properties to.
      * @returns {Object} Returns `object`.
      */
-    function baseCopy(source, object, props) {
-      if (!props) {
-        props = object;
-        object = {};
-      }
+    function baseCopy(source, props, object) {
+      object || (object = {});
+
       var index = -1,
           length = props.length;
 
@@ -12855,7 +13165,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     function baseCallback(func, thisArg, argCount) {
       var type = typeof func;
       if (type == 'function') {
-        return typeof thisArg == 'undefined'
+        return thisArg === undefined
           ? func
           : bindCallback(func, thisArg, argCount);
       }
@@ -12865,9 +13175,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (type == 'object') {
         return baseMatches(func);
       }
-      return typeof thisArg == 'undefined'
-        ? baseProperty(func + '')
-        : baseMatchesProperty(func + '', thisArg);
+      return thisArg === undefined
+        ? property(func)
+        : baseMatchesProperty(func, thisArg);
     }
 
     /**
@@ -12889,7 +13199,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (customizer) {
         result = object ? customizer(value, key, object) : customizer(value);
       }
-      if (typeof result != 'undefined') {
+      if (result !== undefined) {
         return result;
       }
       if (!isObject(value)) {
@@ -12911,7 +13221,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           }
           result = initCloneObject(isFunc ? {} : value);
           if (!isDeep) {
-            return baseCopy(value, result, keys(value));
+            return baseAssign(result, value);
           }
         } else {
           return cloneableTags[tag]
@@ -12949,14 +13259,14 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {Object} Returns the new object.
      */
     var baseCreate = (function() {
-      function Object() {}
+      function object() {}
       return function(prototype) {
         if (isObject(prototype)) {
-          Object.prototype = prototype;
-          var result = new Object;
-          Object.prototype = null;
+          object.prototype = prototype;
+          var result = new object;
+          object.prototype = null;
         }
-        return result || context.Object();
+        return result || {};
       };
     }());
 
@@ -13066,6 +13376,32 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
+     * Gets the extremum value of `collection` invoking `iteratee` for each value
+     * in `collection` to generate the criterion by which the value is ranked.
+     * The `iteratee` is invoked with three arguments: (value, index|key, collection).
+     *
+     * @private
+     * @param {Array|Object|string} collection The collection to iterate over.
+     * @param {Function} iteratee The function invoked per iteration.
+     * @param {Function} comparator The function used to compare values.
+     * @param {*} exValue The initial extremum value.
+     * @returns {*} Returns the extremum value.
+     */
+    function baseExtremum(collection, iteratee, comparator, exValue) {
+      var computed = exValue,
+          result = computed;
+
+      baseEach(collection, function(value, index, collection) {
+        var current = +iteratee(value, index, collection);
+        if (comparator(current, computed) || (current === exValue && current === result)) {
+          computed = current;
+          result = value;
+        }
+      });
+      return result;
+    }
+
+    /**
      * The base implementation of `_.fill` without an iteratee call guard.
      *
      * @private
@@ -13082,7 +13418,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (start < 0) {
         start = -start > length ? 0 : (length + start);
       }
-      end = (typeof end == 'undefined' || end > length) ? length : (+end || 0);
+      end = (end === undefined || end > length) ? length : (+end || 0);
       if (end < 0) {
         end += length;
       }
@@ -13144,8 +13480,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *
      * @private
      * @param {Array} array The array to flatten.
-     * @param {boolean} isDeep Specify a deep flatten.
-     * @param {boolean} isStrict Restrict flattening to arrays and `arguments` objects.
+     * @param {boolean} [isDeep] Specify a deep flatten.
+     * @param {boolean} [isStrict] Restrict flattening to arrays-like objects.
      * @returns {Array} Returns the new flattened array.
      */
     function baseFlatten(array, isDeep, isStrict) {
@@ -13156,8 +13492,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
 
       while (++index < length) {
         var value = array[index];
-
-        if (isObjectLike(value) && isLength(value.length) && (isArray(value) || isArguments(value))) {
+        if (isObjectLike(value) && isArrayLike(value) &&
+            (isStrict || isArray(value) || isArguments(value))) {
           if (isDeep) {
             // Recursively flatten arrays (susceptible to call stack limits).
             value = baseFlatten(value, isDeep, isStrict);
@@ -13165,7 +13501,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           var valIndex = -1,
               valLength = value.length;
 
-          result.length += valLength;
           while (++valIndex < valLength) {
             result[++resIndex] = value[valIndex];
           }
@@ -13179,7 +13514,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     /**
      * The base implementation of `baseForIn` and `baseForOwn` which iterates
      * over `object` properties returned by `keysFunc` invoking `iteratee` for
-     * each property. Iterator functions may exit iteration early by explicitly
+     * each property. Iteratee functions may exit iteration early by explicitly
      * returning `false`.
      *
      * @private
@@ -13266,6 +13601,33 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
+     * The base implementation of `get` without support for string paths
+     * and default values.
+     *
+     * @private
+     * @param {Object} object The object to query.
+     * @param {Array} path The path of the property to get.
+     * @param {string} [pathKey] The key representation of path.
+     * @returns {*} Returns the resolved value.
+     */
+    function baseGet(object, path, pathKey) {
+      if (object == null) {
+        return;
+      }
+      object = toObject(object);
+      if (pathKey !== undefined && pathKey in object) {
+        path = [pathKey];
+      }
+      var index = 0,
+          length = path.length;
+
+      while (object != null && index < length) {
+        object = toObject(object)[path[index++]];
+      }
+      return (index && index == length) ? object : undefined;
+    }
+
+    /**
      * The base implementation of `_.isEqual` without support for `this` binding
      * `customizer` functions.
      *
@@ -13279,18 +13641,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
      */
     function baseIsEqual(value, other, customizer, isLoose, stackA, stackB) {
-      // Exit early for identical values.
       if (value === other) {
-        // Treat `+0` vs. `-0` as not equal.
-        return value !== 0 || (1 / value == 1 / other);
+        return true;
       }
-      var valType = typeof value,
-          othType = typeof other;
-
-      // Exit early for unlike primitive values.
-      if ((valType != 'function' && valType != 'object' && othType != 'function' && othType != 'object') ||
-          value == null || other == null) {
-        // Return `false` unless both values are `NaN`.
+      if (value == null || other == null || (!isObject(value) && !isObjectLike(other))) {
         return value !== value && other !== other;
       }
       return baseIsEqualDeep(value, other, baseIsEqual, customizer, isLoose, stackA, stackB);
@@ -13333,27 +13687,23 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           othIsArr = isTypedArray(other);
         }
       }
-      var objIsObj = (objTag == objectTag || (isLoose && objTag == funcTag)) && !isHostObject(object),
-          othIsObj = (othTag == objectTag || (isLoose && othTag == funcTag)) && !isHostObject(other),
+      var objIsObj = objTag == objectTag && !isHostObject(object),
+          othIsObj = othTag == objectTag && !isHostObject(other),
           isSameTag = objTag == othTag;
 
       if (isSameTag && !(objIsArr || objIsObj)) {
         return equalByTag(object, other, objTag);
       }
-      if (isLoose) {
-        if (!isSameTag && !(objIsObj && othIsObj)) {
-          return false;
-        }
-      } else {
-        var valWrapped = objIsObj && hasOwnProperty.call(object, '__wrapped__'),
-            othWrapped = othIsObj && hasOwnProperty.call(other, '__wrapped__');
+      if (!isLoose) {
+        var objIsWrapped = objIsObj && hasOwnProperty.call(object, '__wrapped__'),
+            othIsWrapped = othIsObj && hasOwnProperty.call(other, '__wrapped__');
 
-        if (valWrapped || othWrapped) {
-          return equalFunc(valWrapped ? object.value() : object, othWrapped ? other.value() : other, customizer, isLoose, stackA, stackB);
+        if (objIsWrapped || othIsWrapped) {
+          return equalFunc(objIsWrapped ? object.value() : object, othIsWrapped ? other.value() : other, customizer, isLoose, stackA, stackB);
         }
-        if (!isSameTag) {
-          return false;
-        }
+      }
+      if (!isSameTag) {
+        return false;
       }
       // Assume cyclic values are equal.
       // For more information on detecting circular references see https://es5.github.io/#JO.
@@ -13384,41 +13734,43 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *
      * @private
      * @param {Object} object The object to inspect.
-     * @param {Array} props The source property names to match.
-     * @param {Array} values The source values to match.
-     * @param {Array} strictCompareFlags Strict comparison flags for source values.
+     * @param {Array} matchData The propery names, values, and compare flags to match.
      * @param {Function} [customizer] The function to customize comparing objects.
      * @returns {boolean} Returns `true` if `object` is a match, else `false`.
      */
-    function baseIsMatch(object, props, values, strictCompareFlags, customizer) {
-      var index = -1,
-          length = props.length,
+    function baseIsMatch(object, matchData, customizer) {
+      var index = matchData.length,
+          length = index,
           noCustomizer = !customizer;
 
-      while (++index < length) {
-        if ((noCustomizer && strictCompareFlags[index])
-              ? values[index] !== object[props[index]]
-              : !(props[index] in object)
+      if (object == null) {
+        return !length;
+      }
+      object = toObject(object);
+      while (index--) {
+        var data = matchData[index];
+        if ((noCustomizer && data[2])
+              ? data[1] !== object[data[0]]
+              : !(data[0] in object)
             ) {
           return false;
         }
       }
-      index = -1;
       while (++index < length) {
-        var key = props[index],
+        data = matchData[index];
+        var key = data[0],
             objValue = object[key],
-            srcValue = values[index];
+            srcValue = data[1];
 
-        if (noCustomizer && strictCompareFlags[index]) {
-          var result = typeof objValue != 'undefined' || (key in object);
-        } else {
-          result = customizer ? customizer(objValue, srcValue, key) : undefined;
-          if (typeof result == 'undefined') {
-            result = baseIsEqual(srcValue, objValue, customizer, true);
+        if (noCustomizer && data[2]) {
+          if (objValue === undefined && !(key in object)) {
+            return false;
           }
-        }
-        if (!result) {
-          return false;
+        } else {
+          var result = customizer ? customizer(objValue, srcValue, key) : undefined;
+          if (!(result === undefined ? baseIsEqual(srcValue, objValue, customizer, true) : result)) {
+            return false;
+          }
         }
       }
       return true;
@@ -13434,9 +13786,11 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {Array} Returns the new mapped array.
      */
     function baseMap(collection, iteratee) {
-      var result = [];
+      var index = -1,
+          result = isArrayLike(collection) ? Array(collection.length) : [];
+
       baseEach(collection, function(value, key, collection) {
-        result.push(iteratee(value, key, collection));
+        result[++index] = iteratee(value, key, collection);
       });
       return result;
     }
@@ -13449,54 +13803,55 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {Function} Returns the new function.
      */
     function baseMatches(source) {
-      var props = keys(source),
-          length = props.length;
+      var matchData = getMatchData(source);
+      if (matchData.length == 1 && matchData[0][2]) {
+        var key = matchData[0][0],
+            value = matchData[0][1];
 
-      if (!length) {
-        return constant(true);
-      }
-      if (length == 1) {
-        var key = props[0],
-            value = source[key];
-
-        if (isStrictComparable(value)) {
-          return function(object) {
-            return object != null && object[key] === value &&
-              (typeof value != 'undefined' || (key in toObject(object)));
-          };
-        }
-      }
-      var values = Array(length),
-          strictCompareFlags = Array(length);
-
-      while (length--) {
-        value = source[props[length]];
-        values[length] = value;
-        strictCompareFlags[length] = isStrictComparable(value);
+        return function(object) {
+          if (object == null) {
+            return false;
+          }
+          object = toObject(object);
+          return object[key] === value && (value !== undefined || (key in object));
+        };
       }
       return function(object) {
-        return object != null && baseIsMatch(toObject(object), props, values, strictCompareFlags);
+        return baseIsMatch(object, matchData);
       };
     }
 
     /**
-     * The base implementation of `_.matchesProperty` which does not coerce `key`
-     * to a string.
+     * The base implementation of `_.matchesProperty` which does not clone `srcValue`.
      *
      * @private
-     * @param {string} key The key of the property to get.
-     * @param {*} value The value to compare.
+     * @param {string} path The path of the property to get.
+     * @param {*} srcValue The value to compare.
      * @returns {Function} Returns the new function.
      */
-    function baseMatchesProperty(key, value) {
-      if (isStrictComparable(value)) {
-        return function(object) {
-          return object != null && object[key] === value &&
-            (typeof value != 'undefined' || (key in toObject(object)));
-        };
-      }
+    function baseMatchesProperty(path, srcValue) {
+      var isArr = isArray(path),
+          isCommon = isKey(path) && isStrictComparable(srcValue),
+          pathKey = (path + '');
+
+      path = toPath(path);
       return function(object) {
-        return object != null && baseIsEqual(value, object[key], null, true);
+        if (object == null) {
+          return false;
+        }
+        var key = pathKey;
+        object = toObject(object);
+        if ((isArr || !isCommon) && !(key in object)) {
+          object = path.length == 1 ? object : baseGet(object, baseSlice(path, 0, -1));
+          if (object == null) {
+            return false;
+          }
+          key = last(path);
+          object = toObject(object);
+        }
+        return object[key] === srcValue
+          ? (srcValue !== undefined || (key in object))
+          : baseIsEqual(srcValue, object[key], undefined, true);
       };
     }
 
@@ -13510,29 +13865,37 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @param {Function} [customizer] The function to customize merging properties.
      * @param {Array} [stackA=[]] Tracks traversed source objects.
      * @param {Array} [stackB=[]] Associates values with source counterparts.
-     * @returns {Object} Returns the destination object.
+     * @returns {Object} Returns `object`.
      */
     function baseMerge(object, source, customizer, stackA, stackB) {
       if (!isObject(object)) {
         return object;
       }
-      var isSrcArr = isLength(source.length) && (isArray(source) || isTypedArray(source));
-      (isSrcArr ? arrayEach : baseForOwn)(source, function(srcValue, key, source) {
+      var isSrcArr = isArrayLike(source) && (isArray(source) || isTypedArray(source)),
+          props = isSrcArr ? null : keys(source);
+
+      arrayEach(props || source, function(srcValue, key) {
+        if (props) {
+          key = srcValue;
+          srcValue = source[key];
+        }
         if (isObjectLike(srcValue)) {
           stackA || (stackA = []);
           stackB || (stackB = []);
-          return baseMergeDeep(object, source, key, baseMerge, customizer, stackA, stackB);
+          baseMergeDeep(object, source, key, baseMerge, customizer, stackA, stackB);
         }
-        var value = object[key],
-            result = customizer ? customizer(value, srcValue, key, object, source) : undefined,
-            isCommon = typeof result == 'undefined';
+        else {
+          var value = object[key],
+              result = customizer ? customizer(value, srcValue, key, object, source) : undefined,
+              isCommon = result === undefined;
 
-        if (isCommon) {
-          result = srcValue;
-        }
-        if ((isSrcArr || typeof result != 'undefined') &&
-            (isCommon || (result === result ? (result !== value) : (value === value)))) {
-          object[key] = result;
+          if (isCommon) {
+            result = srcValue;
+          }
+          if ((result !== undefined || (isSrcArr && !(key in object))) &&
+              (isCommon || (result === result ? (result !== value) : (value === value)))) {
+            object[key] = result;
+          }
         }
       });
       return object;
@@ -13565,14 +13928,14 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       }
       var value = object[key],
           result = customizer ? customizer(value, srcValue, key, object, source) : undefined,
-          isCommon = typeof result == 'undefined';
+          isCommon = result === undefined;
 
       if (isCommon) {
         result = srcValue;
-        if (isLength(srcValue.length) && (isArray(srcValue) || isTypedArray(srcValue))) {
+        if (isArrayLike(srcValue) && (isArray(srcValue) || isTypedArray(srcValue))) {
           result = isArray(value)
             ? value
-            : ((value && value.length) ? arrayCopy(value) : []);
+            : (isArrayLike(value) ? arrayCopy(value) : []);
         }
         else if (isPlainObject(srcValue) || isArguments(srcValue)) {
           result = isArguments(value)
@@ -13597,7 +13960,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * The base implementation of `_.property` which does not coerce `key` to a string.
+     * The base implementation of `_.property` without support for deep paths.
      *
      * @private
      * @param {string} key The key of the property to get.
@@ -13605,8 +13968,44 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function baseProperty(key) {
       return function(object) {
-        return object == null ? undefined : object[key];
+        return object == null ? undefined : toObject(object)[key];
       };
+    }
+
+    /**
+     * A specialized version of `baseProperty` which supports deep paths.
+     *
+     * @private
+     * @param {Array|string} path The path of the property to get.
+     * @returns {Function} Returns the new function.
+     */
+    function basePropertyDeep(path) {
+      var pathKey = (path + '');
+      path = toPath(path);
+      return function(object) {
+        return baseGet(object, path, pathKey);
+      };
+    }
+
+    /**
+     * The base implementation of `_.pullAt` without support for individual
+     * index arguments and capturing the removed elements.
+     *
+     * @private
+     * @param {Array} array The array to modify.
+     * @param {number[]} indexes The indexes of elements to remove.
+     * @returns {Array} Returns `array`.
+     */
+    function basePullAt(array, indexes) {
+      var length = array ? indexes.length : 0;
+      while (length--) {
+        var index = indexes[length];
+        if (index != previous && isIndex(index)) {
+          var previous = index;
+          splice.call(array, index, 1);
+        }
+      }
+      return array;
     }
 
     /**
@@ -13675,7 +14074,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (start < 0) {
         start = -start > length ? 0 : (length + start);
       }
-      end = (typeof end == 'undefined' || end > length) ? length : (+end || 0);
+      end = (end === undefined || end > length) ? length : (+end || 0);
       if (end < 0) {
         end += length;
       }
@@ -13734,23 +14133,19 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *
      * @private
      * @param {Array|Object|string} collection The collection to iterate over.
-     * @param {string[]} props The property names to sort by.
-     * @param {boolean[]} orders The sort orders of `props`.
+     * @param {Function[]|Object[]|string[]} iteratees The iteratees to sort by.
+     * @param {boolean[]} orders The sort orders of `iteratees`.
      * @returns {Array} Returns the new sorted array.
      */
-    function baseSortByOrder(collection, props, orders) {
-      var index = -1,
-          length = collection.length,
-          result = isLength(length) ? Array(length) : [];
+    function baseSortByOrder(collection, iteratees, orders) {
+      var callback = getCallback(),
+          index = -1;
 
-      baseEach(collection, function(value) {
-        var length = props.length,
-            criteria = Array(length);
+      iteratees = arrayMap(iteratees, function(iteratee) { return callback(iteratee); });
 
-        while (length--) {
-          criteria[length] = value == null ? undefined : value[props[length]];
-        }
-        result[++index] = { 'criteria': criteria, 'index': index, 'value': value };
+      var result = baseMap(collection, function(value) {
+        var criteria = arrayMap(iteratees, function(iteratee) { return iteratee(value); });
+        return { 'criteria': criteria, 'index': ++index, 'value': value };
       });
 
       return baseSortBy(result, function(object, other) {
@@ -13830,7 +14225,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     /**
      * The base implementation of `_.values` and `_.valuesIn` which creates an
      * array of `object` property values corresponding to the property names
-     * returned by `keysFunc`.
+     * of `props`.
      *
      * @private
      * @param {Object} object The object to query.
@@ -13917,7 +14312,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           var mid = (low + high) >>> 1,
               computed = array[mid];
 
-          if (retHighest ? (computed <= value) : (computed < value)) {
+          if ((retHighest ? (computed <= value) : (computed < value)) && computed !== null) {
             low = mid + 1;
           } else {
             high = mid;
@@ -13947,17 +14342,23 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       var low = 0,
           high = array ? array.length : 0,
           valIsNaN = value !== value,
-          valIsUndef = typeof value == 'undefined';
+          valIsNull = value === null,
+          valIsUndef = value === undefined;
 
       while (low < high) {
         var mid = floor((low + high) / 2),
             computed = iteratee(array[mid]),
+            isDef = computed !== undefined,
             isReflexive = computed === computed;
 
         if (valIsNaN) {
           var setLow = isReflexive || retHighest;
+        } else if (valIsNull) {
+          setLow = isReflexive && isDef && (retHighest || computed != null);
         } else if (valIsUndef) {
-          setLow = isReflexive && (retHighest || typeof computed != 'undefined');
+          setLow = isReflexive && (retHighest || isDef);
+        } else if (computed == null) {
+          setLow = false;
         } else {
           setLow = retHighest ? (computed <= value) : (computed < value);
         }
@@ -13984,7 +14385,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (typeof func != 'function') {
         return identity;
       }
-      if (typeof thisArg == 'undefined') {
+      if (thisArg === undefined) {
         return func;
       }
       switch (argCount) {
@@ -14088,12 +14489,12 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       while (++argsIndex < argsLength) {
         result[argsIndex] = args[argsIndex];
       }
-      var pad = argsIndex;
+      var offset = argsIndex;
       while (++rightIndex < rightLength) {
-        result[pad + rightIndex] = partials[rightIndex];
+        result[offset + rightIndex] = partials[rightIndex];
       }
       while (++holdersIndex < holdersLength) {
-        result[pad + holders[holdersIndex]] = args[argsIndex++];
+        result[offset + holders[holdersIndex]] = args[argsIndex++];
       }
       return result;
     }
@@ -14144,38 +14545,32 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {Function} Returns the new assigner function.
      */
     function createAssigner(assigner) {
-      return function() {
-        var args = arguments,
-            length = args.length,
-            object = args[0];
+      return restParam(function(object, sources) {
+        var index = -1,
+            length = object == null ? 0 : sources.length,
+            customizer = length > 2 ? sources[length - 2] : undefined,
+            guard = length > 2 ? sources[2] : undefined,
+            thisArg = length > 1 ? sources[length - 1] : undefined;
 
-        if (length < 2 || object == null) {
-          return object;
-        }
-        var customizer = args[length - 2],
-            thisArg = args[length - 1],
-            guard = args[3];
-
-        if (length > 3 && typeof customizer == 'function') {
+        if (typeof customizer == 'function') {
           customizer = bindCallback(customizer, thisArg, 5);
           length -= 2;
         } else {
-          customizer = (length > 2 && typeof thisArg == 'function') ? thisArg : null;
+          customizer = typeof thisArg == 'function' ? thisArg : undefined;
           length -= (customizer ? 1 : 0);
         }
-        if (guard && isIterateeCall(args[1], args[2], guard)) {
-          customizer = length == 3 ? null : customizer;
-          length = 2;
+        if (guard && isIterateeCall(sources[0], sources[1], guard)) {
+          customizer = length < 3 ? undefined : customizer;
+          length = 1;
         }
-        var index = 0;
         while (++index < length) {
-          var source = args[index];
+          var source = sources[index];
           if (source) {
             assigner(object, source, customizer);
           }
         }
         return object;
-      };
+      });
     }
 
     /**
@@ -14188,7 +14583,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function createBaseEach(eachFunc, fromRight) {
       return function(collection, iteratee) {
-        var length = collection ? collection.length : 0;
+        var length = collection ? getLength(collection) : 0;
         if (!isLength(length)) {
           return eachFunc(collection, iteratee);
         }
@@ -14290,8 +14685,20 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function createCtorWrapper(Ctor) {
       return function() {
+        // Use a `switch` statement to work with class constructors.
+        // See https://people.mozilla.org/~jorendorff/es6-draft.html#sec-ecmascript-function-objects-call-thisargument-argumentslist
+        // for more details.
+        var args = arguments;
+        switch (args.length) {
+          case 0: return new Ctor;
+          case 1: return new Ctor(args[0]);
+          case 2: return new Ctor(args[0], args[1]);
+          case 3: return new Ctor(args[0], args[1], args[2]);
+          case 4: return new Ctor(args[0], args[1], args[2], args[3]);
+          case 5: return new Ctor(args[0], args[1], args[2], args[3], args[4]);
+        }
         var thisBinding = baseCreate(Ctor.prototype),
-            result = Ctor.apply(thisBinding, arguments);
+            result = Ctor.apply(thisBinding, args);
 
         // Mimic the constructor's `return` behavior.
         // See https://es5.github.io/#x13.2.2 for more details.
@@ -14322,32 +14729,24 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * Creates a `_.max` or `_.min` function.
      *
      * @private
-     * @param {Function} arrayFunc The function to get the extremum value from an array.
-     * @param {boolean} [isMin] Specify returning the minimum, instead of the maximum,
-     *  extremum value.
+     * @param {Function} comparator The function used to compare values.
+     * @param {*} exValue The initial extremum value.
      * @returns {Function} Returns the new extremum function.
      */
-    function createExtremum(arrayFunc, isMin) {
+    function createExtremum(comparator, exValue) {
       return function(collection, iteratee, thisArg) {
         if (thisArg && isIterateeCall(collection, iteratee, thisArg)) {
           iteratee = null;
         }
-        var func = getCallback(),
-            noIteratee = iteratee == null;
-
-        if (!(func === baseCallback && noIteratee)) {
-          noIteratee = false;
-          iteratee = func(iteratee, thisArg, 3);
-        }
-        if (noIteratee) {
-          var isArr = isArray(collection);
-          if (!isArr && isString(collection)) {
-            iteratee = charAtCallback;
-          } else {
-            return arrayFunc(isArr ? collection : toIterable(collection));
+        iteratee = getCallback(iteratee, thisArg, 3);
+        if (iteratee.length == 1) {
+          collection = toIterable(collection);
+          var result = arrayExtremum(collection, iteratee, comparator, exValue);
+          if (!(collection.length && result === exValue)) {
+            return result;
           }
         }
-        return extremumBy(collection, iteratee, isMin);
+        return baseExtremum(collection, iteratee, comparator, exValue);
       };
     }
 
@@ -14367,7 +14766,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           return index > -1 ? collection[index] : undefined;
         }
         return baseFind(collection, predicate, eachFunc);
-      }
+      };
     }
 
     /**
@@ -14410,11 +14809,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function createFlow(fromRight) {
       return function() {
-        var length = arguments.length;
-        if (!length) {
-          return function() { return arguments[0]; };
-        }
         var wrapper,
+            length = arguments.length,
             index = fromRight ? length : -1,
             leftIndex = 0,
             funcs = Array(length);
@@ -14424,16 +14820,18 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           if (typeof func != 'function') {
             throw new TypeError(FUNC_ERROR_TEXT);
           }
-          var funcName = wrapper ? '' : getFuncName(func);
-          wrapper = funcName == 'wrapper' ? new LodashWrapper([]) : wrapper;
+          if (!wrapper && LodashWrapper.prototype.thru && getFuncName(func) == 'wrapper') {
+            wrapper = new LodashWrapper([]);
+          }
         }
         index = wrapper ? -1 : length;
         while (++index < length) {
           func = funcs[index];
-          funcName = getFuncName(func);
 
-          var data = funcName == 'wrapper' ? getData(func) : null;
-          if (data && isLaziable(data[0])) {
+          var funcName = getFuncName(func),
+              data = funcName == 'wrapper' ? getData(func) : null;
+
+          if (data && isLaziable(data[0]) && data[1] == (ARY_FLAG | CURRY_FLAG | PARTIAL_FLAG | REARG_FLAG) && !data[4].length && data[9] == 1) {
             wrapper = wrapper[getFuncName(data[0])].apply(wrapper, data[3]);
           } else {
             wrapper = (func.length == 1 && isLaziable(func)) ? wrapper[funcName]() : wrapper.thru(func);
@@ -14445,7 +14843,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
             return wrapper.plant(args[0]).value();
           }
           var index = 0,
-              result = funcs[index].apply(this, args);
+              result = length ? funcs[index].apply(this, args) : args[0];
 
           while (++index < length) {
             result = funcs[index].call(this, result);
@@ -14465,7 +14863,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function createForEach(arrayFunc, eachFunc) {
       return function(collection, iteratee, thisArg) {
-        return (typeof iteratee == 'function' && typeof thisArg == 'undefined' && isArray(collection))
+        return (typeof iteratee == 'function' && thisArg === undefined && isArray(collection))
           ? arrayFunc(collection, iteratee)
           : eachFunc(collection, bindCallback(iteratee, thisArg, 3));
       };
@@ -14480,7 +14878,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function createForIn(objectFunc) {
       return function(object, iteratee, thisArg) {
-        if (typeof iteratee != 'function' || typeof thisArg != 'undefined') {
+        if (typeof iteratee != 'function' || thisArg !== undefined) {
           iteratee = bindCallback(iteratee, thisArg, 3);
         }
         return objectFunc(object, iteratee, keysIn);
@@ -14496,10 +14894,32 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function createForOwn(objectFunc) {
       return function(object, iteratee, thisArg) {
-        if (typeof iteratee != 'function' || typeof thisArg != 'undefined') {
+        if (typeof iteratee != 'function' || thisArg !== undefined) {
           iteratee = bindCallback(iteratee, thisArg, 3);
         }
         return objectFunc(object, iteratee);
+      };
+    }
+
+    /**
+     * Creates a function for `_.mapKeys` or `_.mapValues`.
+     *
+     * @private
+     * @param {boolean} [isMapKeys] Specify mapping keys instead of values.
+     * @returns {Function} Returns the new map function.
+     */
+    function createObjectMapper(isMapKeys) {
+      return function(object, iteratee, thisArg) {
+        var result = {};
+        iteratee = getCallback(iteratee, thisArg, 3);
+
+        baseForOwn(object, function(value, key, object) {
+          var mapped = iteratee(value, key, object);
+          key = isMapKeys ? mapped : key;
+          value = isMapKeys ? value : mapped;
+          result[key] = value;
+        });
+        return result;
       };
     }
 
@@ -14513,7 +14933,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     function createPadDir(fromRight) {
       return function(string, length, chars) {
         string = baseToString(string);
-        return string && ((fromRight ? string : '') + createPadding(string, length, chars) + (fromRight ? '' : string));
+        return (fromRight ? string : '') + createPadding(string, length, chars) + (fromRight ? '' : string);
       };
     }
 
@@ -14543,7 +14963,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     function createReduce(arrayFunc, eachFunc) {
       return function(collection, iteratee, accumulator, thisArg) {
         var initFromArray = arguments.length < 3;
-        return (typeof iteratee == 'function' && typeof thisArg == 'undefined' && isArray(collection))
+        return (typeof iteratee == 'function' && thisArg === undefined && isArray(collection))
           ? arrayFunc(collection, iteratee, accumulator, initFromArray)
           : baseReduce(collection, getCallback(iteratee, thisArg, 4), accumulator, initFromArray, eachFunc);
       };
@@ -14572,10 +14992,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           isBindKey = bitmask & BIND_KEY_FLAG,
           isCurry = bitmask & CURRY_FLAG,
           isCurryBound = bitmask & CURRY_BOUND_FLAG,
-          isCurryRight = bitmask & CURRY_RIGHT_FLAG;
-
-      var Ctor = !isBindKey && createCtorWrapper(func),
-          key = func;
+          isCurryRight = bitmask & CURRY_RIGHT_FLAG,
+          Ctor = isBindKey ? null : createCtorWrapper(func);
 
       function wrapper() {
         // Avoid `arguments` object use disqualifying optimizations by
@@ -14622,17 +15040,18 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
             return result;
           }
         }
-        var thisBinding = isBind ? thisArg : this;
-        if (isBindKey) {
-          func = thisBinding[key];
-        }
+        var thisBinding = isBind ? thisArg : this,
+            fn = isBindKey ? thisBinding[func] : func;
+
         if (argPos) {
           args = reorder(args, argPos);
         }
         if (isAry && ary < args.length) {
           args.length = ary;
         }
-        var fn = (this && this !== root && this instanceof wrapper) ? (Ctor || createCtorWrapper(func)) : func;
+        if (this && this !== root && this instanceof wrapper) {
+          fn = Ctor || createCtorWrapper(func);
+        }
         return fn.apply(thisBinding, args);
       }
       return wrapper;
@@ -14706,10 +15125,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function createSortedIndex(retHighest) {
       return function(array, value, iteratee, thisArg) {
-        var func = getCallback(iteratee);
-        return (func === baseCallback && iteratee == null)
+        var callback = getCallback(iteratee);
+        return (iteratee == null && callback === baseCallback)
           ? binaryIndex(array, value, retHighest)
-          : binaryIndexBy(array, value, func(iteratee, thisArg, 1), retHighest);
+          : binaryIndexBy(array, value, callback(iteratee, thisArg, 1), retHighest);
       };
     }
 
@@ -14795,40 +15214,35 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     function equalArrays(array, other, equalFunc, customizer, isLoose, stackA, stackB) {
       var index = -1,
           arrLength = array.length,
-          othLength = other.length,
-          result = true;
+          othLength = other.length;
 
       if (arrLength != othLength && !(isLoose && othLength > arrLength)) {
         return false;
       }
-      // Deep compare the contents, ignoring non-numeric properties.
-      while (result && ++index < arrLength) {
+      // Ignore non-index properties.
+      while (++index < arrLength) {
         var arrValue = array[index],
-            othValue = other[index];
+            othValue = other[index],
+            result = customizer ? customizer(isLoose ? othValue : arrValue, isLoose ? arrValue : othValue, index) : undefined;
 
-        result = undefined;
-        if (customizer) {
-          result = isLoose
-            ? customizer(othValue, arrValue, index)
-            : customizer(arrValue, othValue, index);
-        }
-        if (typeof result == 'undefined') {
-          // Recursively compare arrays (susceptible to call stack limits).
-          if (isLoose) {
-            var othIndex = othLength;
-            while (othIndex--) {
-              othValue = other[othIndex];
-              result = (arrValue && arrValue === othValue) || equalFunc(arrValue, othValue, customizer, isLoose, stackA, stackB);
-              if (result) {
-                break;
-              }
-            }
-          } else {
-            result = (arrValue && arrValue === othValue) || equalFunc(arrValue, othValue, customizer, isLoose, stackA, stackB);
+        if (result !== undefined) {
+          if (result) {
+            continue;
           }
+          return false;
+        }
+        // Recursively compare arrays (susceptible to call stack limits).
+        if (isLoose) {
+          if (!arraySome(other, function(othValue) {
+                return arrValue === othValue || equalFunc(arrValue, othValue, customizer, isLoose, stackA, stackB);
+              })) {
+            return false;
+          }
+        } else if (!(arrValue === othValue || equalFunc(arrValue, othValue, customizer, isLoose, stackA, stackB))) {
+          return false;
         }
       }
-      return !!result;
+      return true;
     }
 
     /**
@@ -14859,8 +15273,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           // Treat `NaN` vs. `NaN` as equal.
           return (object != +object)
             ? other != +other
-            // But, treat `-0` vs. `+0` as not equal.
-            : (object == 0 ? ((1 / object) == (1 / other)) : object == +other);
+            : object == +other;
 
         case regexpTag:
         case stringTag:
@@ -14894,29 +15307,22 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (objLength != othLength && !isLoose) {
         return false;
       }
-      var skipCtor = isLoose,
-          index = -1;
-
-      while (++index < objLength) {
-        var key = objProps[index],
-            result = isLoose ? key in other : hasOwnProperty.call(other, key);
-
-        if (result) {
-          var objValue = object[key],
-              othValue = other[key];
-
-          result = undefined;
-          if (customizer) {
-            result = isLoose
-              ? customizer(othValue, objValue, key)
-              : customizer(objValue, othValue, key);
-          }
-          if (typeof result == 'undefined') {
-            // Recursively compare objects (susceptible to call stack limits).
-            result = (objValue && objValue === othValue) || equalFunc(objValue, othValue, customizer, isLoose, stackA, stackB);
-          }
+      var index = objLength;
+      while (index--) {
+        var key = objProps[index];
+        if (!(isLoose ? key in other : hasOwnProperty.call(other, key))) {
+          return false;
         }
-        if (!result) {
+      }
+      var skipCtor = isLoose;
+      while (++index < objLength) {
+        key = objProps[index];
+        var objValue = object[key],
+            othValue = other[key],
+            result = customizer ? customizer(isLoose ? othValue : objValue, isLoose? objValue : othValue, key) : undefined;
+
+        // Recursively compare objects (susceptible to call stack limits).
+        if (!(result === undefined ? equalFunc(objValue, othValue, customizer, isLoose, stackA, stackB) : result)) {
           return false;
         }
         skipCtor || (skipCtor = key == 'constructor');
@@ -14934,34 +15340,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         }
       }
       return true;
-    }
-
-    /**
-     * Gets the extremum value of `collection` invoking `iteratee` for each value
-     * in `collection` to generate the criterion by which the value is ranked.
-     * The `iteratee` is invoked with three arguments: (value, index, collection).
-     *
-     * @private
-     * @param {Array|Object|string} collection The collection to iterate over.
-     * @param {Function} iteratee The function invoked per iteration.
-     * @param {boolean} [isMin] Specify returning the minimum, instead of the
-     *  maximum, extremum value.
-     * @returns {*} Returns the extremum value.
-     */
-    function extremumBy(collection, iteratee, isMin) {
-      var exValue = isMin ? POSITIVE_INFINITY : NEGATIVE_INFINITY,
-          computed = exValue,
-          result = computed;
-
-      baseEach(collection, function(value, index, collection) {
-        var current = iteratee(value, index, collection);
-        if ((isMin ? (current < computed) : (current > computed)) ||
-            (current === exValue && current === result)) {
-          computed = current;
-          result = value;
-        }
-      });
-      return result;
     }
 
     /**
@@ -14997,29 +15375,20 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @param {Function} func The function to query.
      * @returns {string} Returns the function name.
      */
-    var getFuncName = (function() {
-      if (!support.funcNames) {
-        return constant('');
-      }
-      if (constant.name == 'constant') {
-        return baseProperty('name');
-      }
-      return function(func) {
-        var result = func.name,
-            array = realNames[result],
-            length = array ? array.length : 0;
+    function getFuncName(func) {
+      var result = func.name,
+          array = realNames[result],
+          length = array ? array.length : 0;
 
-        while (length--) {
-          var data = array[length],
-              otherFunc = data.func;
-
-          if (otherFunc == null || otherFunc == func) {
-            return data.name;
-          }
+      while (length--) {
+        var data = array[length],
+            otherFunc = data.func;
+        if (otherFunc == null || otherFunc == func) {
+          return data.name;
         }
-        return result;
-      };
-    }());
+      }
+      return result;
+    }
 
     /**
      * Gets the appropriate "indexOf" function. If the `_.indexOf` method is
@@ -15034,6 +15403,48 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       var result = lodash.indexOf || indexOf;
       result = result === indexOf ? baseIndexOf : result;
       return collection ? result(collection, target, fromIndex) : result;
+    }
+
+    /**
+     * Gets the "length" property value of `object`.
+     *
+     * **Note:** This function is used to avoid a [JIT bug](https://bugs.webkit.org/show_bug.cgi?id=142792)
+     * that affects Safari on at least iOS 8.1-8.3 ARM64.
+     *
+     * @private
+     * @param {Object} object The object to query.
+     * @returns {*} Returns the "length" value.
+     */
+    var getLength = baseProperty('length');
+
+    /**
+     * Gets the propery names, values, and compare flags of `object`.
+     *
+     * @private
+     * @param {Object} object The object to query.
+     * @returns {Array} Returns the match data of `object`.
+     */
+    function getMatchData(object) {
+      var result = pairs(object),
+          length = result.length;
+
+      while (length--) {
+        result[length][2] = isStrictComparable(result[length][1]);
+      }
+      return result;
+    }
+
+    /**
+     * Gets the native function at `key` of `object`.
+     *
+     * @private
+     * @param {Object} object The object to query.
+     * @param {string} key The key of the method to get.
+     * @returns {*} Returns the function if it's native, else `undefined`.
+     */
+    function getNative(object, key) {
+      var value = object == null ? undefined : object[key];
+      return isNative(value) ? value : undefined;
     }
 
     /**
@@ -15104,7 +15515,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * **Note:** This function only supports cloning values with tags of
      * `Boolean`, `Date`, `Error`, `Number`, `RegExp`, or `String`.
      *
-     *
      * @private
      * @param {Object} object The object to clone.
      * @param {string} tag The `toStringTag` of the object to clone.
@@ -15143,6 +15553,36 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
+     * Invokes the method at `path` on `object`.
+     *
+     * @private
+     * @param {Object} object The object to query.
+     * @param {Array|string} path The path of the method to invoke.
+     * @param {Array} args The arguments to invoke the method with.
+     * @returns {*} Returns the result of the invoked method.
+     */
+    function invokePath(object, path, args) {
+      if (object != null && !isKey(path, object)) {
+        path = toPath(path);
+        object = path.length == 1 ? object : baseGet(object, baseSlice(path, 0, -1));
+        path = last(path);
+      }
+      var func = object == null ? object : object[path];
+      return func == null ? undefined : func.apply(object, args);
+    }
+
+    /**
+     * Checks if `value` is array-like.
+     *
+     * @private
+     * @param {*} value The value to check.
+     * @returns {boolean} Returns `true` if `value` is array-like, else `false`.
+     */
+    function isArrayLike(value) {
+      return value != null && isLength(getLength(value));
+    }
+
+    /**
      * Checks if `value` is a valid array-like index.
      *
      * @private
@@ -15151,7 +15591,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {boolean} Returns `true` if `value` is a valid index, else `false`.
      */
     function isIndex(value, length) {
-      value = +value;
+      value = (typeof value == 'number' || reIsUint.test(value)) ? +value : -1;
       length = length == null ? MAX_SAFE_INTEGER : length;
       return value > -1 && value % 1 == 0 && value < length;
     }
@@ -15170,17 +15610,33 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         return false;
       }
       var type = typeof index;
-      if (type == 'number') {
-        var length = object.length,
-            prereq = isLength(length) && isIndex(index, length);
-      } else {
-        prereq = type == 'string' && index in object;
-      }
-      if (prereq) {
+      if (type == 'number'
+          ? (isArrayLike(object) && isIndex(index, object.length))
+          : (type == 'string' && index in object)) {
         var other = object[index];
         return value === value ? (value === other) : (other !== other);
       }
       return false;
+    }
+
+    /**
+     * Checks if `value` is a property name and not a property path.
+     *
+     * @private
+     * @param {*} value The value to check.
+     * @param {Object} [object] The object to query keys on.
+     * @returns {boolean} Returns `true` if `value` is a property name, else `false`.
+     */
+    function isKey(value, object) {
+      var type = typeof value;
+      if ((type == 'string' && reIsPlainProp.test(value)) || type == 'number') {
+        return true;
+      }
+      if (isArray(value)) {
+        return false;
+      }
+      var result = !reIsDeepProp.test(value);
+      return result || (object != null && value in toObject(object));
     }
 
     /**
@@ -15192,7 +15648,15 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function isLaziable(func) {
       var funcName = getFuncName(func);
-      return !!funcName && func === lodash[funcName] && funcName in LazyWrapper.prototype;
+      if (!(funcName in LazyWrapper.prototype)) {
+        return false;
+      }
+      var other = lodash[funcName];
+      if (func === other) {
+        return true;
+      }
+      var data = getData(other);
+      return !!data && func === data[0];
     }
 
     /**
@@ -15217,7 +15681,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *  equality comparisons, else `false`.
      */
     function isStrictComparable(value) {
-      return value === value && (value === 0 ? ((1 / value) > 0) : !isObject(value));
+      return value === value && !isObject(value);
     }
 
     /**
@@ -15291,8 +15755,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * A specialized version of `_.pick` that picks `object` properties specified
-     * by the `props` array.
+     * A specialized version of `_.pick` which picks `object` properties specified
+     * by `props`.
      *
      * @private
      * @param {Object} object The source object.
@@ -15316,7 +15780,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * A specialized version of `_.pick` that picks `object` properties `predicate`
+     * A specialized version of `_.pick` which picks `object` properties `predicate`
      * returns truthy for.
      *
      * @private
@@ -15426,7 +15890,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       baseForIn(value, function(subValue, key) {
         result = key;
       });
-      return typeof result == 'undefined' || hasOwnProperty.call(value, result);
+      return result === undefined || hasOwnProperty.call(value, result);
     }
 
     /**
@@ -15434,18 +15898,16 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * own enumerable property names of `object`.
      *
      * @private
-     * @param {Object} object The object to inspect.
+     * @param {Object} object The object to query.
      * @returns {Array} Returns the array of property names.
      */
     function shimKeys(object) {
       var props = keysIn(object),
           propsLength = props.length,
-          length = propsLength && object.length,
-          support = lodash.support;
+          length = propsLength && object.length;
 
-      var allowIndexes = length && isLength(length) &&
-        (isArray(object) || (support.nonEnumStrings && isString(object)) ||
-          (support.nonEnumArgs && isArguments(object)));
+      var allowIndexes = !!length && isLength(length) &&
+        (isArray(object) || isArguments(object) || isString(object));
 
       var index = -1,
           result = [];
@@ -15460,7 +15922,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Converts `value` to an array-like object if it is not one.
+     * Converts `value` to an array-like object if it's not one.
      *
      * @private
      * @param {*} value The value to process.
@@ -15470,7 +15932,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (value == null) {
         return [];
       }
-      if (!isLength(value.length)) {
+      if (!isArrayLike(value)) {
         return values(value);
       }
       if (lodash.support.unindexedChars && isString(value)) {
@@ -15480,7 +15942,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Converts `value` to an object if it is not one.
+     * Converts `value` to an object if it's not one.
      *
      * @private
      * @param {*} value The value to process.
@@ -15498,6 +15960,24 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         return result;
       }
       return isObject(value) ? value : Object(value);
+    }
+
+    /**
+     * Converts `value` to property path array if it's not one.
+     *
+     * @private
+     * @param {*} value The value to process.
+     * @returns {Array} Returns the property path array.
+     */
+    function toPath(value) {
+      if (isArray(value)) {
+        return value;
+      }
+      var result = [];
+      baseToString(value).replace(rePropName, function(match, number, quote, string) {
+        result.push(quote ? string.replace(reEscapeChar, '$1') : (number || match));
+      });
+      return result;
     }
 
     /**
@@ -15582,12 +16062,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates an array excluding all values of the provided arrays using
-     * `SameValueZero` for equality comparisons.
-     *
-     * **Note:** [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     * comparisons are like strict equality comparisons, e.g. `===`, except that
-     * `NaN` matches `NaN`.
+     * Creates an array of unique `array` values not included in the other
+     * provided arrays using [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
+     * for equality comparisons.
      *
      * @static
      * @memberOf _
@@ -15601,7 +16078,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [1, 3]
      */
     var difference = restParam(function(array, values) {
-      return (isArray(array) || isArguments(array))
+      return isArrayLike(array)
         ? baseDifference(array, baseFlatten(values, false, true))
         : [];
     });
@@ -15996,13 +16473,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
 
     /**
      * Gets the index at which the first occurrence of `value` is found in `array`
-     * using `SameValueZero` for equality comparisons. If `fromIndex` is negative,
-     * it is used as the offset from the end of `array`. If `array` is sorted
-     * providing `true` for `fromIndex` performs a faster binary search.
-     *
-     * **Note:** [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     * comparisons are like strict equality comparisons, e.g. `===`, except that
-     * `NaN` matches `NaN`.
+     * using [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
+     * for equality comparisons. If `fromIndex` is negative, it is used as the offset
+     * from the end of `array`. If `array` is sorted providing `true` for `fromIndex`
+     * performs a faster binary search.
      *
      * @static
      * @memberOf _
@@ -16062,12 +16536,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates an array of unique values in all provided arrays using `SameValueZero`
+     * Creates an array of unique values that are included in all of the provided
+     * arrays using [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
      * for equality comparisons.
-     *
-     * **Note:** [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     * comparisons are like strict equality comparisons, e.g. `===`, except that
-     * `NaN` matches `NaN`.
      *
      * @static
      * @memberOf _
@@ -16078,36 +16549,31 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.intersection([1, 2], [4, 2], [2, 1]);
      * // => [2]
      */
-    function intersection() {
-      var args = [],
-          argsIndex = -1,
-          argsLength = arguments.length,
-          caches = [],
+    var intersection = restParam(function(arrays) {
+      var othLength = arrays.length,
+          othIndex = othLength,
+          caches = Array(length),
           indexOf = getIndexOf(),
-          isCommon = indexOf == baseIndexOf;
+          isCommon = indexOf == baseIndexOf,
+          result = [];
 
-      while (++argsIndex < argsLength) {
-        var value = arguments[argsIndex];
-        if (isArray(value) || isArguments(value)) {
-          args.push(value);
-          caches.push((isCommon && value.length >= 120) ? createCache(argsIndex && value) : null);
-        }
+      while (othIndex--) {
+        var value = arrays[othIndex] = isArrayLike(value = arrays[othIndex]) ? value : [];
+        caches[othIndex] = (isCommon && value.length >= 120) ? createCache(othIndex && value) : null;
       }
-      argsLength = args.length;
-      var array = args[0],
+      var array = arrays[0],
           index = -1,
           length = array ? array.length : 0,
-          result = [],
           seen = caches[0];
 
       outer:
       while (++index < length) {
         value = array[index];
         if ((seen ? cacheIndexOf(seen, value) : indexOf(result, value, 0)) < 0) {
-          argsIndex = argsLength;
-          while (--argsIndex) {
-            var cache = caches[argsIndex];
-            if ((cache ? cacheIndexOf(cache, value) : indexOf(args[argsIndex], value, 0)) < 0) {
+          var othIndex = othLength;
+          while (--othIndex) {
+            var cache = caches[othIndex];
+            if ((cache ? cacheIndexOf(cache, value) : indexOf(arrays[othIndex], value, 0)) < 0) {
               continue outer;
             }
           }
@@ -16118,7 +16584,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         }
       }
       return result;
-    }
+    });
 
     /**
      * Gets the last element of `array`.
@@ -16191,14 +16657,11 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Removes all provided values from `array` using `SameValueZero` for equality
-     * comparisons.
+     * Removes all provided values from `array` using
+     * [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
+     * for equality comparisons.
      *
-     * **Notes:**
-     *  - Unlike `_.without`, this method mutates `array`
-     *  - [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     *    comparisons are like strict equality comparisons, e.g. `===`, except
-     *    that `NaN` matches `NaN`
+     * **Note:** Unlike `_.without`, this method mutates `array`.
      *
      * @static
      * @memberOf _
@@ -16262,20 +16725,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [10, 20]
      */
     var pullAt = restParam(function(array, indexes) {
-      array || (array = []);
       indexes = baseFlatten(indexes);
 
-      var length = indexes.length,
-          result = baseAt(array, indexes);
-
-      indexes.sort(baseCompareAscending);
-      while (length--) {
-        var index = parseFloat(indexes[length]);
-        if (index != previous && isIndex(index)) {
-          var previous = index;
-          splice.call(array, index, 1);
-        }
-      }
+      var result = baseAt(array, indexes);
+      basePullAt(array, indexes.sort(baseCompareAscending));
       return result;
     });
 
@@ -16319,19 +16772,23 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [2, 4]
      */
     function remove(array, predicate, thisArg) {
+      var result = [];
+      if (!(array && array.length)) {
+        return result;
+      }
       var index = -1,
-          length = array ? array.length : 0,
-          result = [];
+          indexes = [],
+          length = array.length;
 
       predicate = getCallback(predicate, thisArg, 3);
       while (++index < length) {
         var value = array[index];
         if (predicate(value, index, array)) {
           result.push(value);
-          splice.call(array, index--, 1);
-          length--;
+          indexes.push(index);
         }
       }
+      basePullAt(array, indexes);
       return result;
     }
 
@@ -16356,7 +16813,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     /**
      * Creates a slice of `array` from `start` up to, but not including, `end`.
      *
-     * **Note:** This function is used instead of `Array#slice` to support node
+     * **Note:** This method is used instead of `Array#slice` to support node
      * lists in IE < 9 and to ensure dense arrays are returned.
      *
      * @static
@@ -16633,12 +17090,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates an array of unique values, in order, of the provided arrays using
-     * `SameValueZero` for equality comparisons.
-     *
-     * **Note:** [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     * comparisons are like strict equality comparisons, e.g. `===`, except that
-     * `NaN` matches `NaN`.
+     * Creates an array of unique values, in order, from all of the provided arrays
+     * using [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
+     * for equality comparisons.
      *
      * @static
      * @memberOf _
@@ -16655,12 +17109,14 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     });
 
     /**
-     * Creates a duplicate-value-free version of an array using `SameValueZero`
-     * for equality comparisons. Providing `true` for `isSorted` performs a faster
-     * search algorithm for sorted arrays. If an iteratee function is provided it
-     * is invoked for each value in the array to generate the criterion by which
-     * uniqueness is computed. The `iteratee` is bound to `thisArg` and invoked
-     * with three arguments: (value, index, array).
+     * Creates a duplicate-free version of an array, using
+     * [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
+     * for equality comparisons, in which only the first occurence of each element
+     * is kept. Providing `true` for `isSorted` performs a faster search algorithm
+     * for sorted arrays. If an iteratee function is provided it is invoked for
+     * each element in the array to generate the criterion by which uniqueness
+     * is computed. The `iteratee` is bound to `thisArg` and invoked with three
+     * arguments: (value, index, array).
      *
      * If a property name is provided for `iteratee` the created `_.property`
      * style callback returns the property value of the given element.
@@ -16673,10 +17129,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * callback returns `true` for elements that have the properties of the given
      * object, else `false`.
      *
-     * **Note:** [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     * comparisons are like strict equality comparisons, e.g. `===`, except that
-     * `NaN` matches `NaN`.
-     *
      * @static
      * @memberOf _
      * @alias unique
@@ -16688,8 +17140,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {Array} Returns the new duplicate-value-free array.
      * @example
      *
-     * _.uniq([1, 2, 1]);
-     * // => [1, 2]
+     * _.uniq([2, 1, 2]);
+     * // => [2, 1]
      *
      * // using `isSorted`
      * _.uniq([1, 1, 2], true);
@@ -16715,9 +17167,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         iteratee = isIterateeCall(array, isSorted, thisArg) ? null : isSorted;
         isSorted = false;
       }
-      var func = getCallback();
-      if (!(func === baseCallback && iteratee == null)) {
-        iteratee = func(iteratee, thisArg, 3);
+      var callback = getCallback();
+      if (!(iteratee == null && callback === baseCallback)) {
+        iteratee = callback(iteratee, thisArg, 3);
       }
       return (isSorted && getIndexOf() == baseIndexOf)
         ? sortedUniq(array, iteratee)
@@ -16726,7 +17178,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
 
     /**
      * This method is like `_.zip` except that it accepts an array of grouped
-     * elements and creates an array regrouping the elements to their pre-`_.zip`
+     * elements and creates an array regrouping the elements to their pre-zip
      * configuration.
      *
      * @static
@@ -16743,10 +17195,19 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [['fred', 'barney'], [30, 40], [true, false]]
      */
     function unzip(array) {
+      if (!(array && array.length)) {
+        return [];
+      }
       var index = -1,
-          length = (array && array.length && arrayMax(arrayMap(array, getLength))) >>> 0,
-          result = Array(length);
+          length = 0;
 
+      array = arrayFilter(array, function(group) {
+        if (isArrayLike(group)) {
+          length = nativeMax(group.length, length);
+          return true;
+        }
+      });
+      var result = Array(length);
       while (++index < length) {
         result[index] = arrayMap(array, baseProperty(index));
       }
@@ -16754,12 +17215,44 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates an array excluding all provided values using `SameValueZero` for
-     * equality comparisons.
+     * This method is like `_.unzip` except that it accepts an iteratee to specify
+     * how regrouped values should be combined. The `iteratee` is bound to `thisArg`
+     * and invoked with four arguments: (accumulator, value, index, group).
      *
-     * **Note:** [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     * comparisons are like strict equality comparisons, e.g. `===`, except that
-     * `NaN` matches `NaN`.
+     * @static
+     * @memberOf _
+     * @category Array
+     * @param {Array} array The array of grouped elements to process.
+     * @param {Function} [iteratee] The function to combine regrouped values.
+     * @param {*} [thisArg] The `this` binding of `iteratee`.
+     * @returns {Array} Returns the new array of regrouped elements.
+     * @example
+     *
+     * var zipped = _.zip([1, 2], [10, 20], [100, 200]);
+     * // => [[1, 10, 100], [2, 20, 200]]
+     *
+     * _.unzipWith(zipped, _.add);
+     * // => [3, 30, 300]
+     */
+    function unzipWith(array, iteratee, thisArg) {
+      var length = array ? array.length : 0;
+      if (!length) {
+        return [];
+      }
+      var result = unzip(array);
+      if (iteratee == null) {
+        return result;
+      }
+      iteratee = bindCallback(iteratee, thisArg, 4);
+      return arrayMap(result, function(group) {
+        return arrayReduce(group, iteratee, undefined, true);
+      });
+    }
+
+    /**
+     * Creates an array excluding all provided values using
+     * [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
+     * for equality comparisons.
      *
      * @static
      * @memberOf _
@@ -16773,13 +17266,13 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [3]
      */
     var without = restParam(function(array, values) {
-      return (isArray(array) || isArguments(array))
+      return isArrayLike(array)
         ? baseDifference(array, values)
         : [];
     });
 
     /**
-     * Creates an array that is the [symmetric difference](https://en.wikipedia.org/wiki/Symmetric_difference)
+     * Creates an array of unique values that is the [symmetric difference](https://en.wikipedia.org/wiki/Symmetric_difference)
      * of the provided arrays.
      *
      * @static
@@ -16798,7 +17291,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
 
       while (++index < length) {
         var array = arguments[index];
-        if (isArray(array) || isArguments(array)) {
+        if (isArrayLike(array)) {
           var result = result
             ? baseDifference(result, array).concat(baseDifference(array, result))
             : array;
@@ -16863,6 +17356,38 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       }
       return result;
     }
+
+    /**
+     * This method is like `_.zip` except that it accepts an iteratee to specify
+     * how grouped values should be combined. The `iteratee` is bound to `thisArg`
+     * and invoked with four arguments: (accumulator, value, index, group).
+     *
+     * @static
+     * @memberOf _
+     * @category Array
+     * @param {...Array} [arrays] The arrays to process.
+     * @param {Function} [iteratee] The function to combine grouped values.
+     * @param {*} [thisArg] The `this` binding of `iteratee`.
+     * @returns {Array} Returns the new array of grouped elements.
+     * @example
+     *
+     * _.zipWith([1, 2], [10, 20], [100, 200], _.add);
+     * // => [111, 222]
+     */
+    var zipWith = restParam(function(arrays) {
+      var length = arrays.length,
+          iteratee = length > 2 ? arrays[length - 2] : undefined,
+          thisArg = length > 1 ? arrays[length - 1] : undefined;
+
+      if (length > 2 && typeof iteratee == 'function') {
+        length -= 2;
+      } else {
+        iteratee = (length > 1 && typeof thisArg == 'function') ? (--length, thisArg) : undefined;
+        thisArg = undefined;
+      }
+      arrays.length = length;
+      return unzipWith(arrays, iteratee, thisArg);
+    });
 
     /*------------------------------------------------------------------------*/
 
@@ -17139,8 +17664,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => ['barney', 'pebbles']
      */
     var at = restParam(function(collection, props) {
-      var length = collection ? collection.length : 0;
-      if (isLength(length)) {
+      if (isArrayLike(collection)) {
         collection = toIterable(collection);
       }
       return baseAt(collection, baseFlatten(props));
@@ -17244,7 +17768,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (thisArg && isIterateeCall(collection, predicate, thisArg)) {
         predicate = null;
       }
-      if (typeof predicate != 'function' || typeof thisArg != 'undefined') {
+      if (typeof predicate != 'function' || thisArg !== undefined) {
         predicate = getCallback(predicate, thisArg, 3);
       }
       return func(collection, predicate);
@@ -17414,10 +17938,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     /**
      * Iterates over elements of `collection` invoking `iteratee` for each element.
      * The `iteratee` is bound to `thisArg` and invoked with three arguments:
-     * (value, index|key, collection). Iterator functions may exit iteration early
+     * (value, index|key, collection). Iteratee functions may exit iteration early
      * by explicitly returning `false`.
      *
-     * **Note:** As with other "Collections" methods, objects with a `length` property
+     * **Note:** As with other "Collections" methods, objects with a "length" property
      * are iterated like arrays. To avoid this behavior `_.forIn` or `_.forOwn`
      * may be used for object iteration.
      *
@@ -17515,13 +18039,10 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     });
 
     /**
-     * Checks if `value` is in `collection` using `SameValueZero` for equality
-     * comparisons. If `fromIndex` is negative, it is used as the offset from
-     * the end of `collection`.
-     *
-     * **Note:** [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
-     * comparisons are like strict equality comparisons, e.g. `===`, except that
-     * `NaN` matches `NaN`.
+     * Checks if `value` is in `collection` using
+     * [`SameValueZero`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-samevaluezero)
+     * for equality comparisons. If `fromIndex` is negative, it is used as the offset
+     * from the end of `collection`.
      *
      * @static
      * @memberOf _
@@ -17547,7 +18068,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => true
      */
     function includes(collection, target, fromIndex, guard) {
-      var length = collection ? collection.length : 0;
+      var length = collection ? getLength(collection) : 0;
       if (!isLength(length)) {
         collection = values(collection);
         length = collection.length;
@@ -17616,16 +18137,16 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     });
 
     /**
-     * Invokes the method named by `methodName` on each element in `collection`,
-     * returning an array of the results of each invoked method. Any additional
-     * arguments are provided to each invoked method. If `methodName` is a function
-     * it is invoked for, and `this` bound to, each element in `collection`.
+     * Invokes the method at `path` of each element in `collection`, returning
+     * an array of the results of each invoked method. Any additional arguments
+     * are provided to each invoked method. If `methodName` is a function it is
+     * invoked for, and `this` bound to, each element in `collection`.
      *
      * @static
      * @memberOf _
      * @category Collection
      * @param {Array|Object|string} collection The collection to iterate over.
-     * @param {Function|string} methodName The name of the method to invoke or
+     * @param {Array|Function|string} path The path of the method to invoke or
      *  the function invoked per iteration.
      * @param {...*} [args] The arguments to invoke the method with.
      * @returns {Array} Returns the array of results.
@@ -17637,15 +18158,15 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.invoke([123, 456], String.prototype.split, '');
      * // => [['1', '2', '3'], ['4', '5', '6']]
      */
-    var invoke = restParam(function(collection, methodName, args) {
+    var invoke = restParam(function(collection, path, args) {
       var index = -1,
-          isFunc = typeof methodName == 'function',
-          length = collection ? collection.length : 0,
-          result = isLength(length) ? Array(length) : [];
+          isFunc = typeof path == 'function',
+          isProp = isKey(path),
+          result = isArrayLike(collection) ? Array(collection.length) : [];
 
       baseEach(collection, function(value) {
-        var func = isFunc ? methodName : (value != null && value[methodName]);
-        result[++index] = func ? func.apply(value, args) : undefined;
+        var func = isFunc ? path : ((isProp && value != null) ? value[path] : null);
+        result[++index] = func ? func.apply(value, args) : invokePath(value, path, args);
       });
       return result;
     });
@@ -17666,14 +18187,15 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * callback returns `true` for elements that have the properties of the given
      * object, else `false`.
      *
-     * Many lodash methods are guarded to work as interatees for methods like
+     * Many lodash methods are guarded to work as iteratees for methods like
      * `_.every`, `_.filter`, `_.map`, `_.mapValues`, `_.reject`, and `_.some`.
      *
      * The guarded methods are:
-     * `ary`, `callback`, `chunk`, `clone`, `create`, `curry`, `curryRight`, `drop`,
-     * `dropRight`, `every`, `fill`, `flatten`, `invert`, `max`, `min`, `parseInt`,
-     * `slice`, `sortBy`, `take`, `takeRight`, `template`, `trim`, `trimLeft`,
-     * `trimRight`, `trunc`, `random`, `range`, `sample`, `some`, `uniq`, and `words`
+     * `ary`, `callback`, `chunk`, `clone`, `create`, `curry`, `curryRight`,
+     * `drop`, `dropRight`, `every`, `fill`, `flatten`, `invert`, `max`, `min`,
+     * `parseInt`, `slice`, `sortBy`, `take`, `takeRight`, `template`, `trim`,
+     * `trimLeft`, `trimRight`, `trunc`, `random`, `range`, `sample`, `some`,
+     * `sum`, `uniq`, and `words`
      *
      * @static
      * @memberOf _
@@ -17682,7 +18204,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @param {Array|Object|string} collection The collection to iterate over.
      * @param {Function|Object|string} [iteratee=_.identity] The function invoked
      *  per iteration.
-     *  create a `_.property` or `_.matches` style callback respectively.
      * @param {*} [thisArg] The `this` binding of `iteratee`.
      * @returns {Array} Returns the new mapped array.
      * @example
@@ -17776,13 +18297,13 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }, function() { return [[], []]; });
 
     /**
-     * Gets the value of `key` from all elements in `collection`.
+     * Gets the property value of `path` from all elements in `collection`.
      *
      * @static
      * @memberOf _
      * @category Collection
      * @param {Array|Object|string} collection The collection to iterate over.
-     * @param {string} key The key of the property to pluck.
+     * @param {Array|string} path The path of the property to pluck.
      * @returns {Array} Returns the property values.
      * @example
      *
@@ -17798,8 +18319,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.pluck(userIndex, 'age');
      * // => [36, 40] (iteration order is not guaranteed)
      */
-    function pluck(collection, key) {
-      return map(collection, baseProperty(key));
+    function pluck(collection, path) {
+      return map(collection, property(path));
     }
 
     /**
@@ -17810,7 +18331,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * value. The `iteratee` is bound to `thisArg` and invoked with four arguments:
      * (accumulator, value, index|key, collection).
      *
-     * Many lodash methods are guarded to work as interatees for methods like
+     * Many lodash methods are guarded to work as iteratees for methods like
      * `_.reduce`, `_.reduceRight`, and `_.transform`.
      *
      * The guarded methods are:
@@ -17827,8 +18348,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @returns {*} Returns the accumulated value.
      * @example
      *
-     * _.reduce([1, 2], function(sum, n) {
-     *   return sum + n;
+     * _.reduce([1, 2], function(total, n) {
+     *   return total + n;
      * });
      * // => 3
      *
@@ -17862,22 +18383,11 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * }, []);
      * // => [4, 5, 2, 3, 0, 1]
      */
-    var reduceRight =  createReduce(arrayReduceRight, baseEachRight);
+    var reduceRight = createReduce(arrayReduceRight, baseEachRight);
 
     /**
      * The opposite of `_.filter`; this method returns the elements of `collection`
      * that `predicate` does **not** return truthy for.
-     *
-     * If a property name is provided for `predicate` the created `_.property`
-     * style callback returns the property value of the given element.
-     *
-     * If a value is also provided for `thisArg` the created `_.matchesProperty`
-     * style callback returns `true` for elements that have a matching property
-     * value, else `false`.
-     *
-     * If an object is provided for `predicate` the created `_.matches` style
-     * callback returns `true` for elements that have the properties of the given
-     * object, else `false`.
      *
      * @static
      * @memberOf _
@@ -17943,8 +18453,20 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         var length = collection.length;
         return length > 0 ? collection[baseRandom(0, length - 1)] : undefined;
       }
-      var result = shuffle(collection);
-      result.length = nativeMin(n < 0 ? 0 : (+n || 0), result.length);
+      var index = -1,
+          result = toArray(collection),
+          length = result.length,
+          lastIndex = length - 1;
+
+      n = nativeMin(n < 0 ? 0 : (+n || 0), length);
+      while (++index < n) {
+        var rand = baseRandom(index, lastIndex),
+            value = result[rand];
+
+        result[rand] = result[index];
+        result[index] = value;
+      }
+      result.length = n;
       return result;
     }
 
@@ -17963,20 +18485,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [4, 1, 3, 2]
      */
     function shuffle(collection) {
-      collection = toIterable(collection);
-
-      var index = -1,
-          length = collection.length,
-          result = Array(length);
-
-      while (++index < length) {
-        var rand = baseRandom(0, index);
-        if (index != rand) {
-          result[index] = result[rand];
-        }
-        result[rand] = collection[index];
-      }
-      return result;
+      return sample(collection, POSITIVE_INFINITY);
     }
 
     /**
@@ -18000,7 +18509,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => 7
      */
     function size(collection) {
-      var length = collection ? collection.length : 0;
+      var length = collection ? getLength(collection) : 0;
       return isLength(length) ? length : keys(collection).length;
     }
 
@@ -18058,7 +18567,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (thisArg && isIterateeCall(collection, predicate, thisArg)) {
         predicate = null;
       }
-      if (typeof predicate != 'function' || typeof thisArg != 'undefined') {
+      if (typeof predicate != 'function' || thisArg !== undefined) {
         predicate = getCallback(predicate, thisArg, 3);
       }
       return func(collection, predicate);
@@ -18086,9 +18595,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @memberOf _
      * @category Collection
      * @param {Array|Object|string} collection The collection to iterate over.
-     * @param {Array|Function|Object|string} [iteratee=_.identity] The function
-     *  invoked per iteration. If a property name or an object is provided it is
-     *  used to create a `_.property` or `_.matches` style callback respectively.
+     * @param {Function|Object|string} [iteratee=_.identity] The function invoked
+     *  per iteration.
      * @param {*} [thisArg] The `this` binding of `iteratee`.
      * @returns {Array} Returns the new sorted array.
      * @example
@@ -18117,104 +18625,112 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (collection == null) {
         return [];
       }
-      var index = -1,
-          length = collection.length,
-          result = isLength(length) ? Array(length) : [];
-
       if (thisArg && isIterateeCall(collection, iteratee, thisArg)) {
         iteratee = null;
       }
+      var index = -1;
       iteratee = getCallback(iteratee, thisArg, 3);
-      baseEach(collection, function(value, key, collection) {
-        result[++index] = { 'criteria': iteratee(value, key, collection), 'index': index, 'value': value };
+
+      var result = baseMap(collection, function(value, key, collection) {
+        return { 'criteria': iteratee(value, key, collection), 'index': ++index, 'value': value };
       });
       return baseSortBy(result, compareAscending);
     }
 
     /**
-     * This method is like `_.sortBy` except that it sorts by property names
-     * instead of an iteratee function.
+     * This method is like `_.sortBy` except that it can sort by multiple iteratees
+     * or property names.
+     *
+     * If a property name is provided for an iteratee the created `_.property`
+     * style callback returns the property value of the given element.
+     *
+     * If an object is provided for an iteratee the created `_.matches` style
+     * callback returns `true` for elements that have the properties of the given
+     * object, else `false`.
      *
      * @static
      * @memberOf _
      * @category Collection
      * @param {Array|Object|string} collection The collection to iterate over.
-     * @param {...(string|string[])} props The property names to sort by,
-     *  specified as individual property names or arrays of property names.
+     * @param {...(Function|Function[]|Object|Object[]|string|string[])} iteratees
+     *  The iteratees to sort by, specified as individual values or arrays of values.
      * @returns {Array} Returns the new sorted array.
      * @example
      *
      * var users = [
+     *   { 'user': 'fred',   'age': 48 },
      *   { 'user': 'barney', 'age': 36 },
-     *   { 'user': 'fred',   'age': 40 },
-     *   { 'user': 'barney', 'age': 26 },
-     *   { 'user': 'fred',   'age': 30 }
+     *   { 'user': 'fred',   'age': 42 },
+     *   { 'user': 'barney', 'age': 34 }
      * ];
      *
      * _.map(_.sortByAll(users, ['user', 'age']), _.values);
-     * // => [['barney', 26], ['barney', 36], ['fred', 30], ['fred', 40]]
+     * // => [['barney', 34], ['barney', 36], ['fred', 42], ['fred', 48]]
+     *
+     * _.map(_.sortByAll(users, 'user', function(chr) {
+     *   return Math.floor(chr.age / 10);
+     * }), _.values);
+     * // => [['barney', 36], ['barney', 34], ['fred', 48], ['fred', 42]]
      */
-    function sortByAll() {
-      var args = arguments,
-          collection = args[0],
-          guard = args[3],
-          index = 0,
-          length = args.length - 1;
-
+    var sortByAll = restParam(function(collection, iteratees) {
       if (collection == null) {
         return [];
       }
-      var props = Array(length);
-      while (index < length) {
-        props[index] = args[++index];
+      var guard = iteratees[2];
+      if (guard && isIterateeCall(iteratees[0], iteratees[1], guard)) {
+        iteratees.length = 1;
       }
-      if (guard && isIterateeCall(args[1], args[2], guard)) {
-        props = args[1];
-      }
-      return baseSortByOrder(collection, baseFlatten(props), []);
-    }
+      return baseSortByOrder(collection, baseFlatten(iteratees), []);
+    });
 
     /**
      * This method is like `_.sortByAll` except that it allows specifying the
-     * sort orders of the property names to sort by. A truthy value in `orders`
-     * will sort the corresponding property name in ascending order while a
-     * falsey value will sort it in descending order.
+     * sort orders of the iteratees to sort by. A truthy value in `orders` will
+     * sort the corresponding property name in ascending order while a falsey
+     * value will sort it in descending order.
+     *
+     * If a property name is provided for an iteratee the created `_.property`
+     * style callback returns the property value of the given element.
+     *
+     * If an object is provided for an iteratee the created `_.matches` style
+     * callback returns `true` for elements that have the properties of the given
+     * object, else `false`.
      *
      * @static
      * @memberOf _
      * @category Collection
      * @param {Array|Object|string} collection The collection to iterate over.
-     * @param {string[]} props The property names to sort by.
-     * @param {boolean[]} orders The sort orders of `props`.
+     * @param {Function[]|Object[]|string[]} iteratees The iteratees to sort by.
+     * @param {boolean[]} orders The sort orders of `iteratees`.
      * @param- {Object} [guard] Enables use as a callback for functions like `_.reduce`.
      * @returns {Array} Returns the new sorted array.
      * @example
      *
      * var users = [
-     *   { 'user': 'barney', 'age': 26 },
-     *   { 'user': 'fred',   'age': 40 },
-     *   { 'user': 'barney', 'age': 36 },
-     *   { 'user': 'fred',   'age': 30 }
+     *   { 'user': 'fred',   'age': 48 },
+     *   { 'user': 'barney', 'age': 34 },
+     *   { 'user': 'fred',   'age': 42 },
+     *   { 'user': 'barney', 'age': 36 }
      * ];
      *
      * // sort by `user` in ascending order and by `age` in descending order
      * _.map(_.sortByOrder(users, ['user', 'age'], [true, false]), _.values);
-     * // => [['barney', 36], ['barney', 26], ['fred', 40], ['fred', 30]]
+     * // => [['barney', 36], ['barney', 34], ['fred', 48], ['fred', 42]]
      */
-    function sortByOrder(collection, props, orders, guard) {
+    function sortByOrder(collection, iteratees, orders, guard) {
       if (collection == null) {
         return [];
       }
-      if (guard && isIterateeCall(props, orders, guard)) {
+      if (guard && isIterateeCall(iteratees, orders, guard)) {
         orders = null;
       }
-      if (!isArray(props)) {
-        props = props == null ? [] : [props];
+      if (!isArray(iteratees)) {
+        iteratees = iteratees == null ? [] : [iteratees];
       }
       if (!isArray(orders)) {
         orders = orders == null ? [] : [orders];
       }
-      return baseSortByOrder(collection, props, orders);
+      return baseSortByOrder(collection, iteratees, orders);
     }
 
     /**
@@ -18367,7 +18883,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       return function() {
         if (--n > 0) {
           result = func.apply(this, arguments);
-        } else {
+        }
+        if (n <= 1) {
           func = null;
         }
         return result;
@@ -18382,7 +18899,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * The `_.bind.placeholder` value, which defaults to `_` in monolithic builds,
      * may be used as a placeholder for partially applied arguments.
      *
-     * **Note:** Unlike native `Function#bind` this method does not set the `length`
+     * **Note:** Unlike native `Function#bind` this method does not set the "length"
      * property of bound functions.
      *
      * @static
@@ -18424,7 +18941,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * of method names. If no method names are provided all enumerable function
      * properties, own and inherited, of `object` are bound.
      *
-     * **Note:** This method does not set the `length` property of bound functions.
+     * **Note:** This method does not set the "length" property of bound functions.
      *
      * @static
      * @memberOf _
@@ -18465,7 +18982,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *
      * This method differs from `_.bind` by allowing bound functions to reference
      * methods that may be redefined or don't yet exist.
-     * See [Peter Michaux's article](http://michaux.ca/articles/lazy-function-definition-pattern)
+     * See [Peter Michaux's article](http://peter.michaux.ca/articles/lazy-function-definition-pattern)
      * for more details.
      *
      * The `_.bindKey.placeholder` value, which defaults to `_` in monolithic
@@ -18522,7 +19039,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * The `_.curry.placeholder` value, which defaults to `_` in monolithic builds,
      * may be used as a placeholder for provided arguments.
      *
-     * **Note:** This method does not set the `length` property of curried functions.
+     * **Note:** This method does not set the "length" property of curried functions.
      *
      * @static
      * @memberOf _
@@ -18561,7 +19078,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * The `_.curryRight.placeholder` value, which defaults to `_` in monolithic
      * builds, may be used as a placeholder for provided arguments.
      *
-     * **Note:** This method does not set the `length` property of curried functions.
+     * **Note:** This method does not set the "length" property of curried functions.
      *
      * @static
      * @memberOf _
@@ -18594,12 +19111,13 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     var curryRight = createCurry(CURRY_RIGHT_FLAG);
 
     /**
-     * Creates a function that delays invoking `func` until after `wait` milliseconds
-     * have elapsed since the last time it was invoked. The created function comes
-     * with a `cancel` method to cancel delayed invocations. Provide an options
-     * object to indicate that `func` should be invoked on the leading and/or
-     * trailing edge of the `wait` timeout. Subsequent calls to the debounced
-     * function return the result of the last `func` invocation.
+     * Creates a debounced function that delays invoking `func` until after `wait`
+     * milliseconds have elapsed since the last time the debounced function was
+     * invoked. The debounced function comes with a `cancel` method to cancel
+     * delayed invocations. Provide an options object to indicate that `func`
+     * should be invoked on the leading and/or trailing edge of the `wait` timeout.
+     * Subsequent calls to the debounced function return the result of the last
+     * `func` invocation.
      *
      * **Note:** If `leading` and `trailing` options are `true`, `func` is invoked
      * on the trailing edge of the timeout only if the the debounced function is
@@ -18913,14 +19431,14 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       }
       var memoized = function() {
         var args = arguments,
-            cache = memoized.cache,
-            key = resolver ? resolver.apply(this, args) : args[0];
+            key = resolver ? resolver.apply(this, args) : args[0],
+            cache = memoized.cache;
 
         if (cache.has(key)) {
           return cache.get(key);
         }
         var result = func.apply(this, args);
-        cache.set(key, result);
+        memoized.cache = cache.set(key, result);
         return result;
       };
       memoized.cache = new memoize.Cache;
@@ -18973,7 +19491,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // `initialize` invokes `createApplication` once
      */
     function once(func) {
-      return before(func, 2);
+      return before(2, func);
     }
 
     /**
@@ -18984,7 +19502,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * The `_.partial.placeholder` value, which defaults to `_` in monolithic
      * builds, may be used as a placeholder for partially applied arguments.
      *
-     * **Note:** This method does not set the `length` property of partially
+     * **Note:** This method does not set the "length" property of partially
      * applied functions.
      *
      * @static
@@ -19017,7 +19535,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * The `_.partialRight.placeholder` value, which defaults to `_` in monolithic
      * builds, may be used as a placeholder for partially applied arguments.
      *
-     * **Note:** This method does not set the `length` property of partially
+     * **Note:** This method does not set the "length" property of partially
      * applied functions.
      *
      * @static
@@ -19101,7 +19619,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (typeof func != 'function') {
         throw new TypeError(FUNC_ERROR_TEXT);
       }
-      start = nativeMax(typeof start == 'undefined' ? (func.length - 1) : (+start || 0), 0);
+      start = nativeMax(start === undefined ? (func.length - 1) : (+start || 0), 0);
       return function() {
         var args = arguments,
             index = -1,
@@ -19167,12 +19685,12 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates a function that only invokes `func` at most once per every `wait`
-     * milliseconds. The created function comes with a `cancel` method to cancel
-     * delayed invocations. Provide an options object to indicate that `func`
-     * should be invoked on the leading and/or trailing edge of the `wait` timeout.
-     * Subsequent calls to the throttled function return the result of the last
-     * `func` call.
+     * Creates a throttled function that only invokes `func` at most once per
+     * every `wait` milliseconds. The throttled function comes with a `cancel`
+     * method to cancel delayed invocations. Provide an options object to indicate
+     * that `func` should be invoked on the leading and/or trailing edge of the
+     * `wait` timeout. Subsequent calls to the throttled function return the
+     * result of the last `func` call.
      *
      * **Note:** If `leading` and `trailing` options are `true`, `func` is invoked
      * on the trailing edge of the timeout only if the the throttled function is
@@ -19312,8 +19830,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         customizer = isDeep;
         isDeep = false;
       }
-      customizer = typeof customizer == 'function' && bindCallback(customizer, thisArg, 1);
-      return baseClone(value, isDeep, customizer);
+      return typeof customizer == 'function'
+        ? baseClone(value, isDeep, bindCallback(customizer, thisArg, 1))
+        : baseClone(value, isDeep);
     }
 
     /**
@@ -19362,8 +19881,57 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => 20
      */
     function cloneDeep(value, customizer, thisArg) {
-      customizer = typeof customizer == 'function' && bindCallback(customizer, thisArg, 1);
-      return baseClone(value, true, customizer);
+      return typeof customizer == 'function'
+        ? baseClone(value, true, bindCallback(customizer, thisArg, 1))
+        : baseClone(value, true);
+    }
+
+    /**
+     * Checks if `value` is greater than `other`.
+     *
+     * @static
+     * @memberOf _
+     * @category Lang
+     * @param {*} value The value to compare.
+     * @param {*} other The other value to compare.
+     * @returns {boolean} Returns `true` if `value` is greater than `other`, else `false`.
+     * @example
+     *
+     * _.gt(3, 1);
+     * // => true
+     *
+     * _.gt(3, 3);
+     * // => false
+     *
+     * _.gt(1, 3);
+     * // => false
+     */
+    function gt(value, other) {
+      return value > other;
+    }
+
+    /**
+     * Checks if `value` is greater than or equal to `other`.
+     *
+     * @static
+     * @memberOf _
+     * @category Lang
+     * @param {*} value The value to compare.
+     * @param {*} other The other value to compare.
+     * @returns {boolean} Returns `true` if `value` is greater than or equal to `other`, else `false`.
+     * @example
+     *
+     * _.gte(3, 1);
+     * // => true
+     *
+     * _.gte(3, 3);
+     * // => true
+     *
+     * _.gte(1, 3);
+     * // => false
+     */
+    function gte(value, other) {
+      return value >= other;
     }
 
     /**
@@ -19383,15 +19951,13 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => false
      */
     function isArguments(value) {
-      var length = isObjectLike(value) ? value.length : undefined;
-      return isLength(length) && objToString.call(value) == argsTag;
+      return isObjectLike(value) && isArrayLike(value) && objToString.call(value) == argsTag;
     }
     // Fallback for environments without a `toStringTag` for `arguments` objects.
     if (!support.argsTag) {
       isArguments = function(value) {
-        var length = isObjectLike(value) ? value.length : undefined;
-        return isLength(length) && hasOwnProperty.call(value, 'callee') &&
-          !propertyIsEnumerable.call(value, 'callee');
+        return isObjectLike(value) && isArrayLike(value) &&
+          hasOwnProperty.call(value, 'callee') && !propertyIsEnumerable.call(value, 'callee');
       };
     }
 
@@ -19513,10 +20079,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (value == null) {
         return true;
       }
-      var length = value.length;
-      if (isLength(length) && (isArray(value) || isString(value) || isArguments(value) ||
+      if (isArrayLike(value) && (isArray(value) || isString(value) || isArguments(value) ||
           (isObjectLike(value) && isFunction(value.splice)))) {
-        return !length;
+        return !value.length;
       }
       return !keys(value).length;
     }
@@ -19536,10 +20101,11 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *
      * @static
      * @memberOf _
+     * @alias eq
      * @category Lang
      * @param {*} value The value to compare.
      * @param {*} other The other value to compare.
-     * @param {Function} [customizer] The function to customize comparing values.
+     * @param {Function} [customizer] The function to customize value comparisons.
      * @param {*} [thisArg] The `this` binding of `customizer`.
      * @returns {boolean} Returns `true` if the values are equivalent, else `false`.
      * @example
@@ -19565,12 +20131,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => true
      */
     function isEqual(value, other, customizer, thisArg) {
-      customizer = typeof customizer == 'function' && bindCallback(customizer, thisArg, 3);
-      if (!customizer && isStrictComparable(value) && isStrictComparable(other)) {
-        return value === other;
-      }
+      customizer = typeof customizer == 'function' ? bindCallback(customizer, thisArg, 3) : undefined;
       var result = customizer ? customizer(value, other) : undefined;
-      return typeof result == 'undefined' ? baseIsEqual(value, other, customizer) : !!result;
+      return  result === undefined ? baseIsEqual(value, other, customizer) : !!result;
     }
 
     /**
@@ -19672,7 +20235,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       // Avoid a V8 JIT bug in Chrome 19-20.
       // See https://code.google.com/p/v8/issues/detail?id=2291 for more details.
       var type = typeof value;
-      return type == 'function' || (!!value && type == 'object');
+      return !!value && (type == 'object' || type == 'function');
     }
 
     /**
@@ -19692,7 +20255,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @category Lang
      * @param {Object} object The object to inspect.
      * @param {Object} source The object of property values to match.
-     * @param {Function} [customizer] The function to customize comparing values.
+     * @param {Function} [customizer] The function to customize value comparisons.
      * @param {*} [thisArg] The `this` binding of `customizer`.
      * @returns {boolean} Returns `true` if `object` is a match, else `false`.
      * @example
@@ -19715,32 +20278,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => true
      */
     function isMatch(object, source, customizer, thisArg) {
-      var props = keys(source),
-          length = props.length;
-
-      if (!length) {
-        return true;
-      }
-      if (object == null) {
-        return false;
-      }
-      customizer = typeof customizer == 'function' && bindCallback(customizer, thisArg, 3);
-      if (!customizer && length == 1) {
-        var key = props[0],
-            value = source[key];
-
-        if (isStrictComparable(value)) {
-          return value === object[key] && (typeof value != 'undefined' || (key in toObject(object)));
-        }
-      }
-      var values = Array(length),
-          strictCompareFlags = Array(length);
-
-      while (length--) {
-        value = values[length] = source[props[length]];
-        strictCompareFlags[length] = isStrictComparable(value);
-      }
-      return baseIsMatch(toObject(object), props, values, strictCompareFlags, customizer);
+      customizer = typeof customizer == 'function' ? bindCallback(customizer, thisArg, 3) : undefined;
+      return baseIsMatch(object, getMatchData(source), customizer);
     }
 
     /**
@@ -19795,9 +20334,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         return false;
       }
       if (objToString.call(value) == funcTag) {
-        return reNative.test(fnToString.call(value));
+        return reIsNative.test(fnToString.call(value));
       }
-      return isObjectLike(value) && (isHostObject(value) ? reNative : reHostCtor).test(value);
+      return isObjectLike(value) && (isHostObject(value) ? reIsNative : reIsHostCtor).test(value);
     }
 
     /**
@@ -19880,8 +20419,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (!(value && objToString.call(value) == objectTag) || (!lodash.support.argsTag && isArguments(value))) {
         return false;
       }
-      var valueOf = value.valueOf,
-          objProto = isNative(valueOf) && (objProto = getPrototypeOf(valueOf)) && getPrototypeOf(objProto);
+      var valueOf = getNative(value, 'valueOf'),
+          objProto = valueOf && (objProto = getPrototypeOf(valueOf)) && getPrototypeOf(objProto);
 
       return objProto
         ? (value == objProto || getPrototypeOf(value) == objProto)
@@ -19965,7 +20504,55 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => false
      */
     function isUndefined(value) {
-      return typeof value == 'undefined';
+      return value === undefined;
+    }
+
+    /**
+     * Checks if `value` is less than `other`.
+     *
+     * @static
+     * @memberOf _
+     * @category Lang
+     * @param {*} value The value to compare.
+     * @param {*} other The other value to compare.
+     * @returns {boolean} Returns `true` if `value` is less than `other`, else `false`.
+     * @example
+     *
+     * _.lt(1, 3);
+     * // => true
+     *
+     * _.lt(3, 3);
+     * // => false
+     *
+     * _.lt(3, 1);
+     * // => false
+     */
+    function lt(value, other) {
+      return value < other;
+    }
+
+    /**
+     * Checks if `value` is less than or equal to `other`.
+     *
+     * @static
+     * @memberOf _
+     * @category Lang
+     * @param {*} value The value to compare.
+     * @param {*} other The other value to compare.
+     * @returns {boolean} Returns `true` if `value` is less than or equal to `other`, else `false`.
+     * @example
+     *
+     * _.lte(1, 3);
+     * // => true
+     *
+     * _.lte(3, 3);
+     * // => true
+     *
+     * _.lte(3, 1);
+     * // => false
+     */
+    function lte(value, other) {
+      return value <= other;
     }
 
     /**
@@ -19984,7 +20571,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [2, 3]
      */
     function toArray(value) {
-      var length = value ? value.length : 0;
+      var length = value ? getLength(value) : 0;
       if (!isLength(length)) {
         return values(value);
       }
@@ -20032,13 +20619,16 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * The `customizer` is bound to `thisArg` and invoked with five arguments:
      * (objectValue, sourceValue, key, object, source).
      *
+     * **Note:** This method mutates `object` and is based on
+     * [`Object.assign`](https://people.mozilla.org/~jorendorff/es6-draft.html#sec-object.assign).
+     *
      * @static
      * @memberOf _
      * @alias extend
      * @category Object
      * @param {Object} object The destination object.
      * @param {...Object} [sources] The source objects.
-     * @param {Function} [customizer] The function to customize assigning values.
+     * @param {Function} [customizer] The function to customize assigned values.
      * @param {*} [thisArg] The `this` binding of `customizer`.
      * @returns {Object} Returns `object`.
      * @example
@@ -20048,13 +20638,17 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *
      * // using a customizer callback
      * var defaults = _.partialRight(_.assign, function(value, other) {
-     *   return typeof value == 'undefined' ? other : value;
+     *   return _.isUndefined(value) ? other : value;
      * });
      *
      * defaults({ 'user': 'barney' }, { 'age': 36 }, { 'user': 'fred' });
      * // => { 'user': 'barney', 'age': 36 }
      */
-    var assign = createAssigner(baseAssign);
+    var assign = createAssigner(function(object, source, customizer) {
+      return customizer
+        ? assignWith(object, source, customizer)
+        : baseAssign(object, source);
+    });
 
     /**
      * Creates an object that inherits from the given `prototype` object. If a
@@ -20095,13 +20689,15 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (guard && isIterateeCall(prototype, properties, guard)) {
         properties = null;
       }
-      return properties ? baseCopy(properties, result, keys(properties)) : result;
+      return properties ? baseAssign(result, properties) : result;
     }
 
     /**
      * Assigns own enumerable properties of source object(s) to the destination
      * object for all destination properties that resolve to `undefined`. Once a
      * property is set, additional values of the same property are ignored.
+     *
+     * **Note:** This method mutates `object`.
      *
      * @static
      * @memberOf _
@@ -20226,7 +20822,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     /**
      * Iterates over own and inherited enumerable properties of an object invoking
      * `iteratee` for each property. The `iteratee` is bound to `thisArg` and invoked
-     * with three arguments: (value, key, object). Iterator functions may exit
+     * with three arguments: (value, key, object). Iteratee functions may exit
      * iteration early by explicitly returning `false`.
      *
      * @static
@@ -20282,7 +20878,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     /**
      * Iterates over own enumerable properties of an object invoking `iteratee`
      * for each property. The `iteratee` is bound to `thisArg` and invoked with
-     * three arguments: (value, key, object). Iterator functions may exit iteration
+     * three arguments: (value, key, object). Iteratee functions may exit iteration
      * early by explicitly returning `false`.
      *
      * @static
@@ -20355,24 +20951,72 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Checks if `key` exists as a direct property of `object` instead of an
-     * inherited property.
+     * Gets the property value at `path` of `object`. If the resolved value is
+     * `undefined` the `defaultValue` is used in its place.
      *
      * @static
      * @memberOf _
      * @category Object
-     * @param {Object} object The object to inspect.
-     * @param {string} key The key to check.
-     * @returns {boolean} Returns `true` if `key` is a direct property, else `false`.
+     * @param {Object} object The object to query.
+     * @param {Array|string} path The path of the property to get.
+     * @param {*} [defaultValue] The value returned if the resolved value is `undefined`.
+     * @returns {*} Returns the resolved value.
      * @example
      *
-     * var object = { 'a': 1, 'b': 2, 'c': 3 };
+     * var object = { 'a': [{ 'b': { 'c': 3 } }] };
      *
-     * _.has(object, 'b');
+     * _.get(object, 'a[0].b.c');
+     * // => 3
+     *
+     * _.get(object, ['a', '0', 'b', 'c']);
+     * // => 3
+     *
+     * _.get(object, 'a.b.c', 'default');
+     * // => 'default'
+     */
+    function get(object, path, defaultValue) {
+      var result = object == null ? undefined : baseGet(object, toPath(path), path + '');
+      return result === undefined ? defaultValue : result;
+    }
+
+    /**
+     * Checks if `path` is a direct property.
+     *
+     * @static
+     * @memberOf _
+     * @category Object
+     * @param {Object} object The object to query.
+     * @param {Array|string} path The path to check.
+     * @returns {boolean} Returns `true` if `path` is a direct property, else `false`.
+     * @example
+     *
+     * var object = { 'a': { 'b': { 'c': 3 } } };
+     *
+     * _.has(object, 'a');
+     * // => true
+     *
+     * _.has(object, 'a.b.c');
+     * // => true
+     *
+     * _.has(object, ['a', 'b', 'c']);
      * // => true
      */
-    function has(object, key) {
-      return object ? hasOwnProperty.call(object, key) : false;
+    function has(object, path) {
+      if (object == null) {
+        return false;
+      }
+      var result = hasOwnProperty.call(object, path);
+      if (!result && !isKey(path)) {
+        path = toPath(path);
+        object = path.length == 1 ? object : baseGet(object, baseSlice(path, 0, -1));
+        if (object == null) {
+          return false;
+        }
+        path = last(path);
+        result = hasOwnProperty.call(object, path);
+      }
+      return result || (isLength(object.length) && isIndex(path, object.length) &&
+        (isArray(object) || isArguments(object) || isString(object)));
     }
 
     /**
@@ -20435,7 +21079,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @static
      * @memberOf _
      * @category Object
-     * @param {Object} object The object to inspect.
+     * @param {Object} object The object to query.
      * @returns {Array} Returns the array of property names.
      * @example
      *
@@ -20453,12 +21097,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => ['0', '1']
      */
     var keys = !nativeKeys ? shimKeys : function(object) {
-      if (object) {
-        var Ctor = object.constructor,
-            length = object.length;
-      }
+      var Ctor = object == null ? null : object.constructor;
       if ((typeof Ctor == 'function' && Ctor.prototype === object) ||
-          (typeof object == 'function' ? lodash.support.enumPrototypes : (length && isLength(length)))) {
+          (typeof object == 'function' ? lodash.support.enumPrototypes : isArrayLike(object))) {
         return shimKeys(object);
       }
       return isObject(object) ? nativeKeys(object) : [];
@@ -20472,7 +21113,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @static
      * @memberOf _
      * @category Object
-     * @param {Object} object The object to inspect.
+     * @param {Object} object The object to query.
      * @returns {Array} Returns the array of property names.
      * @example
      *
@@ -20497,8 +21138,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           support = lodash.support;
 
       length = (length && isLength(length) &&
-        (isArray(object) || (support.nonEnumStrings && isString(object)) ||
-          (support.nonEnumArgs && isArguments(object))) && length) || 0;
+        (isArray(object) || isArguments(object) || isString(object)) && length) || 0;
 
       var Ctor = object.constructor,
           index = -1,
@@ -20545,6 +21185,28 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
+     * The opposite of `_.mapValues`; this method creates an object with the
+     * same values as `object` and keys generated by running each own enumerable
+     * property of `object` through `iteratee`.
+     *
+     * @static
+     * @memberOf _
+     * @category Object
+     * @param {Object} object The object to iterate over.
+     * @param {Function|Object|string} [iteratee=_.identity] The function invoked
+     *  per iteration.
+     * @param {*} [thisArg] The `this` binding of `iteratee`.
+     * @returns {Object} Returns the new mapped object.
+     * @example
+     *
+     * _.mapKeys({ 'a': 1, 'b': 2 }, function(value, key) {
+     *   return key + value;
+     * });
+     * // => { 'a1': 1, 'b2': 2 }
+     */
+    var mapKeys = createObjectMapper(true);
+
+    /**
      * Creates an object with the same keys as `object` and values generated by
      * running each own enumerable property of `object` through `iteratee`. The
      * iteratee function is bound to `thisArg` and invoked with three arguments:
@@ -20585,15 +21247,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.mapValues(users, 'age');
      * // => { 'fred': 40, 'pebbles': 1 } (iteration order is not guaranteed)
      */
-    function mapValues(object, iteratee, thisArg) {
-      var result = {};
-      iteratee = getCallback(iteratee, thisArg, 3);
-
-      baseForOwn(object, function(value, key, object) {
-        result[key] = iteratee(value, key, object);
-      });
-      return result;
-    }
+    var mapValues = createObjectMapper();
 
     /**
      * Recursively merges own enumerable properties of the source object(s), that
@@ -20609,7 +21263,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @category Object
      * @param {Object} object The destination object.
      * @param {...Object} [sources] The source objects.
-     * @param {Function} [customizer] The function to customize merging properties.
+     * @param {Function} [customizer] The function to customize assigned values.
      * @param {*} [thisArg] The `this` binding of `customizer`.
      * @returns {Object} Returns `object`.
      * @example
@@ -20648,11 +21302,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     /**
      * The opposite of `_.pick`; this method creates an object composed of the
      * own and inherited enumerable properties of `object` that are not omitted.
-     * Property names may be specified as individual arguments or as arrays of
-     * property names. If `predicate` is provided it is invoked for each property
-     * of `object` omitting the properties `predicate` returns truthy for. The
-     * predicate is bound to `thisArg` and invoked with three arguments:
-     * (value, key, object).
      *
      * @static
      * @memberOf _
@@ -20694,7 +21343,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @static
      * @memberOf _
      * @category Object
-     * @param {Object} object The object to inspect.
+     * @param {Object} object The object to query.
      * @returns {Array} Returns the new array of key-value pairs.
      * @example
      *
@@ -20702,6 +21351,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => [['barney', 36], ['fred', 40]] (iteration order is not guaranteed)
      */
     function pairs(object) {
+      object = toObject(object);
+
       var index = -1,
           props = keys(object),
           length = props.length,
@@ -20750,41 +21401,93 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     });
 
     /**
-     * Resolves the value of property `key` on `object`. If the value of `key` is
-     * a function it is invoked with the `this` binding of `object` and its result
-     * is returned, else the property value is returned. If the property value is
-     * `undefined` the `defaultValue` is used in its place.
+     * This method is like `_.get` except that if the resolved value is a function
+     * it is invoked with the `this` binding of its parent object and its result
+     * is returned.
      *
      * @static
      * @memberOf _
      * @category Object
      * @param {Object} object The object to query.
-     * @param {string} key The key of the property to resolve.
-     * @param {*} [defaultValue] The value returned if the property value
-     *  resolves to `undefined`.
+     * @param {Array|string} path The path of the property to resolve.
+     * @param {*} [defaultValue] The value returned if the resolved value is `undefined`.
      * @returns {*} Returns the resolved value.
      * @example
      *
-     * var object = { 'user': 'fred', 'age': _.constant(40) };
+     * var object = { 'a': [{ 'b': { 'c1': 3, 'c2': _.constant(4) } }] };
      *
-     * _.result(object, 'user');
-     * // => 'fred'
+     * _.result(object, 'a[0].b.c1');
+     * // => 3
      *
-     * _.result(object, 'age');
-     * // => 40
+     * _.result(object, 'a[0].b.c2');
+     * // => 4
      *
-     * _.result(object, 'status', 'busy');
-     * // => 'busy'
+     * _.result(object, 'a.b.c', 'default');
+     * // => 'default'
      *
-     * _.result(object, 'status', _.constant('busy'));
-     * // => 'busy'
+     * _.result(object, 'a.b.c', _.constant('default'));
+     * // => 'default'
      */
-    function result(object, key, defaultValue) {
-      var value = object == null ? undefined : object[key];
-      if (typeof value == 'undefined') {
-        value = defaultValue;
+    function result(object, path, defaultValue) {
+      var result = object == null ? undefined : toObject(object)[path];
+      if (result === undefined) {
+        if (object != null && !isKey(path, object)) {
+          path = toPath(path);
+          object = path.length == 1 ? object : baseGet(object, baseSlice(path, 0, -1));
+          result = object == null ? undefined : toObject(object)[last(path)];
+        }
+        result = result === undefined ? defaultValue : result;
       }
-      return isFunction(value) ? value.call(object) : value;
+      return isFunction(result) ? result.call(object) : result;
+    }
+
+    /**
+     * Sets the property value of `path` on `object`. If a portion of `path`
+     * does not exist it is created.
+     *
+     * @static
+     * @memberOf _
+     * @category Object
+     * @param {Object} object The object to augment.
+     * @param {Array|string} path The path of the property to set.
+     * @param {*} value The value to set.
+     * @returns {Object} Returns `object`.
+     * @example
+     *
+     * var object = { 'a': [{ 'b': { 'c': 3 } }] };
+     *
+     * _.set(object, 'a[0].b.c', 4);
+     * console.log(object.a[0].b.c);
+     * // => 4
+     *
+     * _.set(object, 'x[0].y.z', 5);
+     * console.log(object.x[0].y.z);
+     * // => 5
+     */
+    function set(object, path, value) {
+      if (object == null) {
+        return object;
+      }
+      var pathKey = (path + '');
+      path = (object[pathKey] != null || isKey(path, object)) ? [pathKey] : toPath(path);
+
+      var index = -1,
+          length = path.length,
+          lastIndex = length - 1,
+          nested = object;
+
+      while (nested != null && ++index < length) {
+        var key = path[index];
+        if (isObject(nested)) {
+          if (index == lastIndex) {
+            nested[key] = value;
+          } else if (nested[key] == null) {
+            nested[key] = isIndex(path[index + 1]) ? [] : {};
+          }
+        }
+        nested = nested[key];
+      }
+      return object;
     }
 
     /**
@@ -20792,7 +21495,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * `accumulator` object which is the result of running each of its own enumerable
      * properties through `iteratee`, with each invocation potentially mutating
      * the `accumulator` object. The `iteratee` is bound to `thisArg` and invoked
-     * with four arguments: (accumulator, value, key, object). Iterator functions
+     * with four arguments: (accumulator, value, key, object). Iteratee functions
      * may exit iteration early by explicitly returning `false`.
      *
      * @static
@@ -20826,7 +21529,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           if (isArr) {
             accumulator = isArray(object) ? new Ctor : [];
           } else {
-            accumulator = baseCreate(isFunction(Ctor) && Ctor.prototype);
+            accumulator = baseCreate(isFunction(Ctor) ? Ctor.prototype : null);
           }
         } else {
           accumulator = {};
@@ -20935,7 +21638,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       } else {
         end = +end || 0;
       }
-      return value >= start && value < end;
+      return value >= nativeMin(start, end) && value < nativeMax(start, end);
     }
 
     /**
@@ -21060,7 +21763,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      */
     function deburr(string) {
       string = baseToString(string);
-      return string && string.replace(reLatin1, deburrLetter).replace(reComboMarks, '');
+      return string && string.replace(reLatin1, deburrLetter).replace(reComboMark, '');
     }
 
     /**
@@ -21089,7 +21792,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       target = (target + '');
 
       var length = string.length;
-      position = typeof position == 'undefined'
+      position = position === undefined
         ? length
         : nativeMin(position < 0 ? 0 : (+position || 0), length);
 
@@ -21105,15 +21808,16 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * use a third-party library like [_he_](https://mths.be/he).
      *
      * Though the ">" character is escaped for symmetry, characters like
-     * ">" and "/" don't require escaping in HTML and have no special meaning
+     * ">" and "/" don't need escaping in HTML and have no special meaning
      * unless they're part of a tag or unquoted attribute value.
      * See [Mathias Bynens's article](https://mathiasbynens.be/notes/ambiguous-ampersands)
      * (under "semi-related fun fact") for more details.
      *
      * Backticks are escaped because in Internet Explorer < 9, they can break out
-     * of attribute values or HTML comments. See [#102](https://html5sec.org/#102),
-     * [#108](https://html5sec.org/#108), and [#133](https://html5sec.org/#133) of
-     * the [HTML5 Security Cheatsheet](https://html5sec.org/) for more details.
+     * of attribute values or HTML comments. See [#59](https://html5sec.org/#59),
+     * [#102](https://html5sec.org/#102), [#108](https://html5sec.org/#108), and
+     * [#133](https://html5sec.org/#133) of the [HTML5 Security Cheatsheet](https://html5sec.org/)
+     * for more details.
      *
      * When working with HTML you should always [quote attribute values](http://wonko.com/post/html-escaping)
      * to reduce XSS vectors.
@@ -21181,7 +21885,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     });
 
     /**
-     * Pads `string` on the left and right sides if it is shorter than `length`.
+     * Pads `string` on the left and right sides if it's shorter than `length`.
      * Padding characters are truncated if they can't be evenly divided by `length`.
      *
      * @static
@@ -21219,7 +21923,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Pads `string` on the left side if it is shorter than `length`. Padding
+     * Pads `string` on the left side if it's shorter than `length`. Padding
      * characters are truncated if they exceed `length`.
      *
      * @static
@@ -21243,7 +21947,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     var padLeft = createPadDir();
 
     /**
-     * Pads `string` on the right side if it is shorter than `length`. Padding
+     * Pads `string` on the right side if it's shorter than `length`. Padding
      * characters are truncated if they exceed `length`.
      *
      * @static
@@ -21307,7 +22011,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           radix = +radix;
         }
         string = trim(string);
-        return nativeParseInt(string, radix || (reHexPrefix.test(string) ? 16 : 10));
+        return nativeParseInt(string, radix || (reHasHexPrefix.test(string) ? 16 : 10));
       };
     }
 
@@ -21532,9 +22236,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
         options = otherOptions = null;
       }
       string = baseToString(string);
-      options = baseAssign(baseAssign({}, otherOptions || options), settings, assignOwnDefaults);
+      options = assignWith(baseAssign({}, otherOptions || options), settings, assignOwnDefaults);
 
-      var imports = baseAssign(baseAssign({}, options.imports), settings.imports, assignOwnDefaults),
+      var imports = assignWith(baseAssign({}, options.imports), settings.imports, assignOwnDefaults),
           importsKeys = keys(imports),
           importsValues = baseValues(imports, importsKeys);
 
@@ -21724,7 +22428,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Truncates `string` if it is longer than the given maximum string length.
+     * Truncates `string` if it's longer than the given maximum string length.
      * The last characters of the truncated string are replaced with the omission
      * string which defaults to "...".
      *
@@ -21985,7 +22689,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates a function which performs a deep comparison between a given object
+     * Creates a function that performs a deep comparison between a given object
      * and `source`, returning `true` if the given object has equivalent property
      * values, else `false`.
      *
@@ -22014,7 +22718,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates a function which compares the property value of `key` on a given
+     * Creates a function that compares the property value of `path` on a given
      * object to `value`.
      *
      * **Note:** This method supports comparing arrays, booleans, `Date` objects,
@@ -22024,8 +22728,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * @static
      * @memberOf _
      * @category Utility
-     * @param {string} key The key of the property to get.
-     * @param {*} value The value to compare.
+     * @param {Array|string} path The path of the property to get.
+     * @param {*} srcValue The value to match.
      * @returns {Function} Returns the new function.
      * @example
      *
@@ -22037,22 +22741,79 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.find(users, _.matchesProperty('user', 'fred'));
      * // => { 'user': 'fred' }
      */
-    function matchesProperty(key, value) {
-      return baseMatchesProperty(key + '', baseClone(value, true));
+    function matchesProperty(path, srcValue) {
+      return baseMatchesProperty(path, baseClone(srcValue, true));
     }
+
+    /**
+     * Creates a function that invokes the method at `path` on a given object.
+     * Any additional arguments are provided to the invoked method.
+     *
+     * @static
+     * @memberOf _
+     * @category Utility
+     * @param {Array|string} path The path of the method to invoke.
+     * @param {...*} [args] The arguments to invoke the method with.
+     * @returns {Function} Returns the new function.
+     * @example
+     *
+     * var objects = [
+     *   { 'a': { 'b': { 'c': _.constant(2) } } },
+     *   { 'a': { 'b': { 'c': _.constant(1) } } }
+     * ];
+     *
+     * _.map(objects, _.method('a.b.c'));
+     * // => [2, 1]
+     *
+     * _.invoke(_.sortBy(objects, _.method(['a', 'b', 'c'])), 'a.b.c');
+     * // => [1, 2]
+     */
+    var method = restParam(function(path, args) {
+      return function(object) {
+        return invokePath(object, path, args);
+      };
+    });
+
+    /**
+     * The opposite of `_.method`; this method creates a function that invokes
+     * the method at a given path on `object`. Any additional arguments are
+     * provided to the invoked method.
+     *
+     * @static
+     * @memberOf _
+     * @category Utility
+     * @param {Object} object The object to query.
+     * @param {...*} [args] The arguments to invoke the method with.
+     * @returns {Function} Returns the new function.
+     * @example
+     *
+     * var array = _.times(3, _.constant),
+     *     object = { 'a': array, 'b': array, 'c': array };
+     *
+     * _.map(['a[2]', 'c[0]'], _.methodOf(object));
+     * // => [2, 0]
+     *
+     * _.map([['a', '2'], ['c', '0']], _.methodOf(object));
+     * // => [2, 0]
+     */
+    var methodOf = restParam(function(object, args) {
+      return function(path) {
+        return invokePath(object, path, args);
+      };
+    });
 
     /**
      * Adds all own enumerable function properties of a source object to the
      * destination object. If `object` is a function then methods are added to
      * its prototype as well.
      *
-     * **Note:** Use `_.runInContext` to create a pristine `lodash` function
-     * for mixins to avoid conflicts caused by modifying the original.
+     * **Note:** Use `_.runInContext` to create a pristine `lodash` function to
+     * avoid conflicts caused by modifying the original.
      *
      * @static
      * @memberOf _
      * @category Utility
-     * @param {Function|Object} [object=this] object The destination object.
+     * @param {Function|Object} [object=lodash] The destination object.
      * @param {Object} source The object of functions to add.
      * @param {Object} [options] The options object.
      * @param {boolean} [options.chain=true] Specify whether the functions added
@@ -22065,9 +22826,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      *     return /[aeiou]/i.test(v);
      *   });
      * }
-     *
-     * // use `_.runInContext` to avoid conflicts (esp. in Node.js)
-     * var _ = require('lodash').runInContext();
      *
      * _.mixin({ 'vowels': vowels });
      * _.vowels('fred');
@@ -22083,8 +22841,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     function mixin(object, source, options) {
       if (options == null) {
         var isObj = isObject(source),
-            props = isObj && keys(source),
-            methodNames = props && props.length && baseFunctions(source, props);
+            props = isObj ? keys(source) : null,
+            methodNames = (props && props.length) ? baseFunctions(source, props) : null;
 
         if (!(methodNames ? methodNames.length : isObj)) {
           methodNames = false;
@@ -22151,7 +22909,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * A no-operation function which returns `undefined` regardless of the
+     * A no-operation function that returns `undefined` regardless of the
      * arguments it receives.
      *
      * @static
@@ -22169,61 +22927,61 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     }
 
     /**
-     * Creates a function which returns the property value of `key` on a given object.
+     * Creates a function that returns the property value at `path` on a
+     * given object.
      *
      * @static
      * @memberOf _
      * @category Utility
-     * @param {string} key The key of the property to get.
+     * @param {Array|string} path The path of the property to get.
      * @returns {Function} Returns the new function.
      * @example
      *
-     * var users = [
-     *   { 'user': 'fred' },
-     *   { 'user': 'barney' }
+     * var objects = [
+     *   { 'a': { 'b': { 'c': 2 } } },
+     *   { 'a': { 'b': { 'c': 1 } } }
      * ];
      *
-     * var getName = _.property('user');
+     * _.map(objects, _.property('a.b.c'));
+     * // => [2, 1]
      *
-     * _.map(users, getName);
-     * // => ['fred', 'barney']
-     *
-     * _.pluck(_.sortBy(users, getName), 'user');
-     * // => ['barney', 'fred']
+     * _.pluck(_.sortBy(objects, _.property(['a', 'b', 'c'])), 'a.b.c');
+     * // => [1, 2]
      */
-    function property(key) {
-      return baseProperty(key + '');
+    function property(path) {
+      return isKey(path) ? baseProperty(path) : basePropertyDeep(path);
     }
 
     /**
-     * The opposite of `_.property`; this method creates a function which returns
-     * the property value of a given key on `object`.
+     * The opposite of `_.property`; this method creates a function that returns
+     * the property value at a given path on `object`.
      *
      * @static
      * @memberOf _
      * @category Utility
-     * @param {Object} object The object to inspect.
+     * @param {Object} object The object to query.
      * @returns {Function} Returns the new function.
      * @example
      *
-     * var object = { 'a': 3, 'b': 1, 'c': 2 };
+     * var array = [0, 1, 2],
+     *     object = { 'a': array, 'b': array, 'c': array };
      *
-     * _.map(['a', 'c'], _.propertyOf(object));
-     * // => [3, 2]
+     * _.map(['a[2]', 'c[0]'], _.propertyOf(object));
+     * // => [2, 0]
      *
-     * _.sortBy(['a', 'b', 'c'], _.propertyOf(object));
-     * // => ['b', 'c', 'a']
+     * _.map([['a', '2'], ['c', '0']], _.propertyOf(object));
+     * // => [2, 0]
      */
     function propertyOf(object) {
-      return function(key) {
-        return object == null ? undefined : object[key];
+      return function(path) {
+        return baseGet(object, toPath(path), path + '');
       };
     }
 
     /**
      * Creates an array of numbers (positive and/or negative) progressing from
      * `start` up to, but not including, `end`. If `end` is not specified it is
-     * set to `start` with `start` then set to `0`. If `start` is less than `end`
+     * set to `start` with `start` then set to `0`. If `end` is less than `start`
      * a zero-length range is created unless a negative `step` is specified.
      *
      * @static
@@ -22299,7 +23057,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.times(3, function(n) {
      *   mage.castSpell(n);
      * });
-     * // => invokes `mage.castSpell(n)` three times with `n` of `0`, `1`, and `2` respectively
+     * // => invokes `mage.castSpell(n)` three times with `n` of `0`, `1`, and `2`
      *
      * _.times(3, function(n) {
      *   this.cast(n);
@@ -22307,7 +23065,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => also invokes `mage.castSpell(n)` three times
      */
     function times(n, iteratee, thisArg) {
-      n = +n;
+      n = floor(n);
 
       // Exit early to avoid a JSC JIT bug in Safari 8
       // where `Array(0)` is treated as `Array(1)`.
@@ -22366,7 +23124,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * // => 10
      */
     function add(augend, addend) {
-      return augend + addend;
+      return (+augend || 0) + (+addend || 0);
     }
 
     /**
@@ -22416,7 +23174,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.max(users, 'age');
      * // => { 'user': 'fred', 'age': 40 }
      */
-    var max = createExtremum(arrayMax);
+    var max = createExtremum(gt, NEGATIVE_INFINITY);
 
     /**
      * Gets the minimum value of `collection`. If `collection` is empty or falsey
@@ -22465,7 +23223,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
      * _.min(users, 'age');
      * // => { 'user': 'barney', 'age': 36 }
      */
-    var min = createExtremum(arrayMin, true);
+    var min = createExtremum(lt, POSITIVE_INFINITY);
 
     /**
      * Gets the sum of the values in `collection`.
@@ -22503,12 +23261,12 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
       if (thisArg && isIterateeCall(collection, iteratee, thisArg)) {
         iteratee = null;
       }
-      var func = getCallback(),
+      var callback = getCallback(),
           noIteratee = iteratee == null;
 
-      if (!(func === baseCallback && noIteratee)) {
+      if (!(noIteratee && callback === baseCallback)) {
         noIteratee = false;
-        iteratee = func(iteratee, thisArg, 3);
+        iteratee = callback(iteratee, thisArg, 3);
       }
       return noIteratee
         ? arraySum(isArray(collection) ? collection : toIterable(collection))
@@ -22587,11 +23345,14 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     lodash.keys = keys;
     lodash.keysIn = keysIn;
     lodash.map = map;
+    lodash.mapKeys = mapKeys;
     lodash.mapValues = mapValues;
     lodash.matches = matches;
     lodash.matchesProperty = matchesProperty;
     lodash.memoize = memoize;
     lodash.merge = merge;
+    lodash.method = method;
+    lodash.methodOf = methodOf;
     lodash.mixin = mixin;
     lodash.negate = negate;
     lodash.omit = omit;
@@ -22612,6 +23373,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     lodash.remove = remove;
     lodash.rest = rest;
     lodash.restParam = restParam;
+    lodash.set = set;
     lodash.shuffle = shuffle;
     lodash.slice = slice;
     lodash.sortBy = sortBy;
@@ -22632,6 +23394,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     lodash.union = union;
     lodash.uniq = uniq;
     lodash.unzip = unzip;
+    lodash.unzipWith = unzipWith;
     lodash.values = values;
     lodash.valuesIn = valuesIn;
     lodash.where = where;
@@ -22640,6 +23403,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     lodash.xor = xor;
     lodash.zip = zip;
     lodash.zipObject = zipObject;
+    lodash.zipWith = zipWith;
 
     // Add aliases.
     lodash.backflow = flowRight;
@@ -22680,6 +23444,9 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     lodash.findLastKey = findLastKey;
     lodash.findWhere = findWhere;
     lodash.first = first;
+    lodash.get = get;
+    lodash.gt = gt;
+    lodash.gte = gte;
     lodash.has = has;
     lodash.identity = identity;
     lodash.includes = includes;
@@ -22709,6 +23476,8 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     lodash.kebabCase = kebabCase;
     lodash.last = last;
     lodash.lastIndexOf = lastIndexOf;
+    lodash.lt = lt;
+    lodash.lte = lte;
     lodash.max = max;
     lodash.min = min;
     lodash.noConflict = noConflict;
@@ -22745,6 +23514,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     lodash.all = every;
     lodash.any = some;
     lodash.contains = includes;
+    lodash.eq = isEqual;
     lodash.detect = find;
     lodash.foldl = reduce;
     lodash.foldr = reduceRight;
@@ -22868,7 +23638,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     // Add `LazyWrapper` methods for `_.pluck` and `_.where`.
     arrayEach(['pluck', 'where'], function(methodName, index) {
       var operationName = index ? 'filter' : 'map',
-          createCallback = index ? baseMatches : baseProperty;
+          createCallback = index ? baseMatches : property;
 
       LazyWrapper.prototype[methodName] = function(value) {
         return this[operationName](createCallback(value));
@@ -22888,9 +23658,14 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
 
     LazyWrapper.prototype.slice = function(start, end) {
       start = start == null ? 0 : (+start || 0);
-      var result = start < 0 ? this.takeRight(-start) : this.drop(start);
 
-      if (typeof end != 'undefined') {
+      var result = this;
+      if (start < 0) {
+        result = this.takeRight(-start);
+      } else if (start) {
+        result = this.drop(start);
+      }
+      if (end !== undefined) {
         end = (+end || 0);
         result = end < 0 ? result.dropRight(-end) : result.take(end - start);
       }
@@ -22912,7 +23687,6 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
 
       lodash.prototype[methodName] = function() {
         var args = arguments,
-            length = args.length,
             chainAll = this.__chain__,
             value = this.__wrapped__,
             isHybrid = !!this.__actions__.length,
@@ -22921,7 +23695,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
             useLazy = isLazy || isArray(value);
 
         if (useLazy && checkIteratee && typeof iteratee == 'function' && iteratee.length != 1) {
-          // avoid lazy use if the iteratee has a `length` other than `1`
+          // avoid lazy use if the iteratee has a "length" value other than `1`
           isLazy = useLazy = false;
         }
         var onlyLazy = isLazy && !isHybrid;
@@ -22957,7 +23731,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
           retUnwrapped = /^(?:join|pop|replace|shift)$/.test(methodName);
 
       // Avoid array-like object bugs with `Array#shift` and `Array#splice` in
-      // IE < 9, Firefox < 10, Narwhal, and RingoJS.
+      // IE < 9, Firefox < 10, and RingoJS.
       var func = !fixObjects ? protoFunc : function() {
         var result = protoFunc.apply(this, arguments);
         if (this.length === 0) {
@@ -23037,7 +23811,7 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
     if (moduleExports) {
       (freeModule.exports = _)._ = _;
     }
-    // Export for Narwhal or Rhino -require.
+    // Export for Rhino with CommonJS support.
     else {
       freeExports._ = _;
     }
@@ -23069,5640 +23843,6 @@ module.exports = es;
 /* jshint maxlen: false */
 
 var ca = require('../client_action').factory;
-var proxy = require('../client_action').proxyFactory;
-var namespace = require('../client_action').namespaceFactory;
-var api = module.exports = {};
-
-api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
-
-/**
- * Perform a [bulk](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-bulk.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.consistency - Explicit write consistency setting for the operation
- * @param {Boolean} params.refresh - Refresh the index after performing the operation
- * @param {String} [params.replication=sync] - Explicitely set the replication type
- * @param {String} params.routing - Specific routing value
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {String} params.type - Default document type for items which don't provide one
- * @param {String} params.index - Default index for items which don't provide one
- */
-api.bulk = ca({
-  params: {
-    consistency: {
-      type: 'enum',
-      options: [
-        'one',
-        'quorum',
-        'all'
-      ]
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    replication: {
-      type: 'enum',
-      'default': 'sync',
-      options: [
-        'sync',
-        'async'
-      ]
-    },
-    routing: {
-      type: 'string'
-    },
-    timeout: {
-      type: 'time'
-    },
-    type: {
-      type: 'string'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_bulk',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_bulk',
-      req: {
-        index: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_bulk'
-    }
-  ],
-  needBody: true,
-  bulkBody: true,
-  method: 'POST'
-});
-
-api.cat = namespace();
-
-/**
- * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to return
- */
-api.cat.prototype.aliases = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/aliases/<%=name%>',
-      req: {
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/aliases'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.allocation](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-allocation.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.bytes - The unit in which to display byte values
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information
- */
-api.cat.prototype.allocation = ca({
-  params: {
-    bytes: {
-      type: 'enum',
-      options: [
-        'b',
-        'k',
-        'm',
-        'g'
-      ]
-    },
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/allocation/<%=nodeId%>',
-      req: {
-        nodeId: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/allocation'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.count](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-count.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
- */
-api.cat.prototype.count = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/count/<%=index%>',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/count'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.fielddata](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat-fielddata.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.bytes - The unit in which to display byte values
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return the fielddata size
- */
-api.cat.prototype.fielddata = ca({
-  params: {
-    bytes: {
-      type: 'enum',
-      options: [
-        'b',
-        'k',
-        'm',
-        'g'
-      ]
-    },
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    },
-    fields: {
-      type: 'list'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/fielddata/<%=fields%>',
-      req: {
-        fields: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/fielddata'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.health](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-health.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.ts=true] - Set to false to disable timestamping
- * @param {Boolean} params.v - Verbose mode. Display column headers
- */
-api.cat.prototype.health = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    ts: {
-      type: 'boolean',
-      'default': true
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  url: {
-    fmt: '/_cat/health'
-  }
-});
-
-/**
- * Perform a [cat.help](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.help - Return help information
- */
-api.cat.prototype.help = ca({
-  params: {
-    help: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  url: {
-    fmt: '/_cat'
-  }
-});
-
-/**
- * Perform a [cat.indices](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-indices.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.bytes - The unit in which to display byte values
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.pri - Set to true to return stats only for primary shards
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
- */
-api.cat.prototype.indices = ca({
-  params: {
-    bytes: {
-      type: 'enum',
-      options: [
-        'b',
-        'k',
-        'm',
-        'g'
-      ]
-    },
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    pri: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/indices/<%=index%>',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/indices'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.master](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-master.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- */
-api.cat.prototype.master = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  url: {
-    fmt: '/_cat/master'
-  }
-});
-
-/**
- * Perform a [cat.nodes](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-nodes.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- */
-api.cat.prototype.nodes = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  url: {
-    fmt: '/_cat/nodes'
-  }
-});
-
-/**
- * Perform a [cat.pendingTasks](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-pending-tasks.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- */
-api.cat.prototype.pendingTasks = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  url: {
-    fmt: '/_cat/pending_tasks'
-  }
-});
-
-/**
- * Perform a [cat.plugins](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat-plugins.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- */
-api.cat.prototype.plugins = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  url: {
-    fmt: '/_cat/plugins'
-  }
-});
-
-/**
- * Perform a [cat.recovery](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-recovery.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.bytes - The unit in which to display byte values
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
- */
-api.cat.prototype.recovery = ca({
-  params: {
-    bytes: {
-      type: 'enum',
-      options: [
-        'b',
-        'k',
-        'm',
-        'g'
-      ]
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/recovery/<%=index%>',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/recovery'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.segments](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat-segments.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
- */
-api.cat.prototype.segments = ca({
-  params: {
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': true
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/segments/<%=index%>',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/segments'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.shards](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cat-shards.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
- */
-api.cat.prototype.shards = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cat/shards/<%=index%>',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cat/shards'
-    }
-  ]
-});
-
-/**
- * Perform a [cat.threadPool](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat-thread-pool.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
- * @param {Boolean} params.help - Return help information
- * @param {Boolean} params.v - Verbose mode. Display column headers
- * @param {Boolean} params.fullId - Enables displaying the complete node ids
- */
-api.cat.prototype.threadPool = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    h: {
-      type: 'list'
-    },
-    help: {
-      type: 'boolean',
-      'default': false
-    },
-    v: {
-      type: 'boolean',
-      'default': false
-    },
-    fullId: {
-      type: 'boolean',
-      'default': false,
-      name: 'full_id'
-    }
-  },
-  url: {
-    fmt: '/_cat/thread_pool'
-  }
-});
-
-/**
- * Perform a [clearScroll](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-request-scroll.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.scrollId - A comma-separated list of scroll IDs to clear
- */
-api.clearScroll = ca({
-  urls: [
-    {
-      fmt: '/_search/scroll/<%=scrollId%>',
-      req: {
-        scrollId: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_search/scroll'
-    }
-  ],
-  method: 'DELETE'
-});
-
-api.cluster = namespace();
-
-/**
- * Perform a [cluster.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-update-settings.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Date, Number} params.timeout - Explicit operation timeout
- */
-api.cluster.prototype.getSettings = ca({
-  params: {
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    timeout: {
-      type: 'time'
-    }
-  },
-  url: {
-    fmt: '/_cluster/settings'
-  }
-});
-
-/**
- * Perform a [cluster.health](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-health.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} [params.level=cluster] - Specify the level of detail for returned information
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Number} params.waitForActiveShards - Wait until the specified number of shards is active
- * @param {String} params.waitForNodes - Wait until the specified number of nodes is available
- * @param {Number} params.waitForRelocatingShards - Wait until the specified number of relocating shards is finished
- * @param {String} params.waitForStatus - Wait until cluster is in a specific state
- * @param {String} params.index - Limit the information returned to a specific index
- */
-api.cluster.prototype.health = ca({
-  params: {
-    level: {
-      type: 'enum',
-      'default': 'cluster',
-      options: [
-        'cluster',
-        'indices',
-        'shards'
-      ]
-    },
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    timeout: {
-      type: 'time'
-    },
-    waitForActiveShards: {
-      type: 'number',
-      name: 'wait_for_active_shards'
-    },
-    waitForNodes: {
-      type: 'string',
-      name: 'wait_for_nodes'
-    },
-    waitForRelocatingShards: {
-      type: 'number',
-      name: 'wait_for_relocating_shards'
-    },
-    waitForStatus: {
-      type: 'enum',
-      'default': null,
-      options: [
-        'green',
-        'yellow',
-        'red'
-      ],
-      name: 'wait_for_status'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cluster/health/<%=index%>',
-      req: {
-        index: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_cluster/health'
-    }
-  ]
-});
-
-/**
- * Perform a [cluster.pendingTasks](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-pending.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- */
-api.cluster.prototype.pendingTasks = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/_cluster/pending_tasks'
-  }
-});
-
-/**
- * Perform a [cluster.putSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-update-settings.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- */
-api.cluster.prototype.putSettings = ca({
-  params: {
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    }
-  },
-  url: {
-    fmt: '/_cluster/settings'
-  },
-  method: 'PUT'
-});
-
-/**
- * Perform a [cluster.reroute](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-reroute.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.dryRun - Simulate the operation only and return the resulting state
- * @param {Boolean} params.explain - Return an explanation of why the commands can or cannot be executed
- * @param {Boolean} params.filterMetadata - Don't return cluster state metadata (default: false)
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Date, Number} params.timeout - Explicit operation timeout
- */
-api.cluster.prototype.reroute = ca({
-  params: {
-    dryRun: {
-      type: 'boolean',
-      name: 'dry_run'
-    },
-    explain: {
-      type: 'boolean'
-    },
-    filterMetadata: {
-      type: 'boolean',
-      name: 'filter_metadata'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    timeout: {
-      type: 'time'
-    }
-  },
-  url: {
-    fmt: '/_cluster/reroute'
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [cluster.state](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-state.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- * @param {String, String[], Boolean} params.metric - Limit the information returned to the specified metrics
- */
-api.cluster.prototype.state = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cluster/state/<%=metric%>/<%=index%>',
-      req: {
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'blocks',
-            'metadata',
-            'nodes',
-            'routing_table',
-            'master_node',
-            'version'
-          ]
-        },
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cluster/state/<%=metric%>',
-      req: {
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'blocks',
-            'metadata',
-            'nodes',
-            'routing_table',
-            'master_node',
-            'version'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_cluster/state'
-    }
-  ]
-});
-
-/**
- * Perform a [cluster.stats](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-stats.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
- * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
- */
-api.cluster.prototype.stats = ca({
-  params: {
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    },
-    human: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cluster/stats/nodes/<%=nodeId%>',
-      req: {
-        nodeId: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cluster/stats'
-    }
-  ]
-});
-
-/**
- * Perform a [count](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-count.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Number} params.minScore - Include only documents with a specific `_score` value in the result
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {String} params.routing - Specific routing value
- * @param {String} params.source - The URL-encoded query definition (instead of using the request body)
- * @param {String, String[], Boolean} params.index - A comma-separated list of indices to restrict the results
- * @param {String, String[], Boolean} params.type - A comma-separated list of types to restrict the results
- */
-api.count = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    minScore: {
-      type: 'number',
-      name: 'min_score'
-    },
-    preference: {
-      type: 'string'
-    },
-    routing: {
-      type: 'string'
-    },
-    source: {
-      type: 'string'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_count',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_count',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_count'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [countPercolate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-percolate.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.percolateIndex - The index to count percolate the document into. Defaults to index.
- * @param {String} params.percolateType - The type to count percolate document into. Defaults to type.
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.index - The index of the document being count percolated.
- * @param {String} params.type - The type of the document being count percolated.
- * @param {String} params.id - Substitute the document in the request body with a document that is known by the specified id. On top of the id, the index and type parameter will be used to retrieve the document from within the cluster.
- */
-api.countPercolate = ca({
-  params: {
-    routing: {
-      type: 'list'
-    },
-    preference: {
-      type: 'string'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    percolateIndex: {
-      type: 'string',
-      name: 'percolate_index'
-    },
-    percolateType: {
-      type: 'string',
-      name: 'percolate_type'
-    },
-    version: {
-      type: 'number'
-    },
-    versionType: {
-      type: 'enum',
-      options: [
-        'internal',
-        'external',
-        'external_gte',
-        'force'
-      ],
-      name: 'version_type'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/<%=id%>/_percolate/count',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        },
-        id: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/<%=type%>/_percolate/count',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [delete](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-delete.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.consistency - Specific write consistency setting for the operation
- * @param {String} params.parent - ID of parent document
- * @param {Boolean} params.refresh - Refresh the index after performing the operation
- * @param {String} [params.replication=sync] - Specific replication type
- * @param {String} params.routing - Specific routing value
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.id - The document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
- */
-api['delete'] = ca({
-  params: {
-    consistency: {
-      type: 'enum',
-      options: [
-        'one',
-        'quorum',
-        'all'
-      ]
-    },
-    parent: {
-      type: 'string'
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    replication: {
-      type: 'enum',
-      'default': 'sync',
-      options: [
-        'sync',
-        'async'
-      ]
-    },
-    routing: {
-      type: 'string'
-    },
-    timeout: {
-      type: 'time'
-    },
-    version: {
-      type: 'number'
-    },
-    versionType: {
-      type: 'enum',
-      options: [
-        'internal',
-        'external',
-        'external_gte',
-        'force'
-      ],
-      name: 'version_type'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [deleteByQuery](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-delete-by-query.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.analyzer - The analyzer to use for the query string
- * @param {String} params.consistency - Specific write consistency setting for the operation
- * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
- * @param {String} params.df - The field to use as default where no field prefix is given in the query string
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} [params.replication=sync] - Specific replication type
- * @param {String} params.q - Query in the Lucene query string syntax
- * @param {String} params.routing - Specific routing value
- * @param {String} params.source - The URL-encoded query definition (instead of using the request body)
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {String, String[], Boolean} params.index - A comma-separated list of indices to restrict the operation; use `_all` to perform the operation on all indices
- * @param {String, String[], Boolean} params.type - A comma-separated list of types to restrict the operation
- */
-api.deleteByQuery = ca({
-  params: {
-    analyzer: {
-      type: 'string'
-    },
-    consistency: {
-      type: 'enum',
-      options: [
-        'one',
-        'quorum',
-        'all'
-      ]
-    },
-    defaultOperator: {
-      type: 'enum',
-      'default': 'OR',
-      options: [
-        'AND',
-        'OR'
-      ],
-      name: 'default_operator'
-    },
-    df: {
-      type: 'string'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    replication: {
-      type: 'enum',
-      'default': 'sync',
-      options: [
-        'sync',
-        'async'
-      ]
-    },
-    q: {
-      type: 'string'
-    },
-    routing: {
-      type: 'string'
-    },
-    source: {
-      type: 'string'
-    },
-    timeout: {
-      type: 'time'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_query',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_query',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    }
-  ],
-  method: 'DELETE'
-});
-
-/**
- * Perform a [deleteScript](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/modules-scripting.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.id - Script ID
- * @param {String} params.lang - Script language
- */
-api.deleteScript = ca({
-  url: {
-    fmt: '/_scripts/<%=lang%>/<%=id%>',
-    req: {
-      lang: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [deleteTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-template.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.id - Template ID
- */
-api.deleteTemplate = ca({
-  url: {
-    fmt: '/_search/template/<%=id%>',
-    req: {
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [exists](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-get.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.parent - The ID of the parent document
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
- * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
- * @param {String} params.routing - Specific routing value
- * @param {String} params.id - The document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document (use `_all` to fetch the first document matching the ID across all types)
- */
-api.exists = ca({
-  params: {
-    parent: {
-      type: 'string'
-    },
-    preference: {
-      type: 'string'
-    },
-    realtime: {
-      type: 'boolean'
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    routing: {
-      type: 'string'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'HEAD'
-});
-
-/**
- * Perform a [explain](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-explain.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.analyzeWildcard - Specify whether wildcards and prefix queries in the query string query should be analyzed (default: false)
- * @param {String} params.analyzer - The analyzer for the query string query
- * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
- * @param {String} params.df - The default field for query string query (default: _all)
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
- * @param {Boolean} params.lenient - Specify whether format-based query failures (such as providing text to a numeric field) should be ignored
- * @param {Boolean} params.lowercaseExpandedTerms - Specify whether query terms should be lowercased
- * @param {String} params.parent - The ID of the parent document
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {String} params.q - Query in the Lucene query string syntax
- * @param {String} params.routing - Specific routing value
- * @param {String} params.source - The URL-encoded query definition (instead of using the request body)
- * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
- * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
- * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
- * @param {String} params.id - The document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
- */
-api.explain = ca({
-  params: {
-    analyzeWildcard: {
-      type: 'boolean',
-      name: 'analyze_wildcard'
-    },
-    analyzer: {
-      type: 'string'
-    },
-    defaultOperator: {
-      type: 'enum',
-      'default': 'OR',
-      options: [
-        'AND',
-        'OR'
-      ],
-      name: 'default_operator'
-    },
-    df: {
-      type: 'string'
-    },
-    fields: {
-      type: 'list'
-    },
-    lenient: {
-      type: 'boolean'
-    },
-    lowercaseExpandedTerms: {
-      type: 'boolean',
-      name: 'lowercase_expanded_terms'
-    },
-    parent: {
-      type: 'string'
-    },
-    preference: {
-      type: 'string'
-    },
-    q: {
-      type: 'string'
-    },
-    routing: {
-      type: 'string'
-    },
-    source: {
-      type: 'string'
-    },
-    _source: {
-      type: 'list'
-    },
-    _sourceExclude: {
-      type: 'list',
-      name: '_source_exclude'
-    },
-    _sourceInclude: {
-      type: 'list',
-      name: '_source_include'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>/_explain',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [get](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-get.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
- * @param {String} params.parent - The ID of the parent document
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
- * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
- * @param {String} params.routing - Specific routing value
- * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
- * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
- * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.id - The document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document (use `_all` to fetch the first document matching the ID across all types)
- */
-api.get = ca({
-  params: {
-    fields: {
-      type: 'list'
-    },
-    parent: {
-      type: 'string'
-    },
-    preference: {
-      type: 'string'
-    },
-    realtime: {
-      type: 'boolean'
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    routing: {
-      type: 'string'
-    },
-    _source: {
-      type: 'list'
-    },
-    _sourceExclude: {
-      type: 'list',
-      name: '_source_exclude'
-    },
-    _sourceInclude: {
-      type: 'list',
-      name: '_source_include'
-    },
-    version: {
-      type: 'number'
-    },
-    versionType: {
-      type: 'enum',
-      options: [
-        'internal',
-        'external',
-        'external_gte',
-        'force'
-      ],
-      name: 'version_type'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  }
-});
-
-/**
- * Perform a [getScript](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/modules-scripting.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.id - Script ID
- * @param {String} params.lang - Script language
- */
-api.getScript = ca({
-  url: {
-    fmt: '/_scripts/<%=lang%>/<%=id%>',
-    req: {
-      lang: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  }
-});
-
-/**
- * Perform a [getSource](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-get.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.parent - The ID of the parent document
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
- * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
- * @param {String} params.routing - Specific routing value
- * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
- * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
- * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.id - The document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document; use `_all` to fetch the first document matching the ID across all types
- */
-api.getSource = ca({
-  params: {
-    parent: {
-      type: 'string'
-    },
-    preference: {
-      type: 'string'
-    },
-    realtime: {
-      type: 'boolean'
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    routing: {
-      type: 'string'
-    },
-    _source: {
-      type: 'list'
-    },
-    _sourceExclude: {
-      type: 'list',
-      name: '_source_exclude'
-    },
-    _sourceInclude: {
-      type: 'list',
-      name: '_source_include'
-    },
-    version: {
-      type: 'number'
-    },
-    versionType: {
-      type: 'enum',
-      options: [
-        'internal',
-        'external',
-        'external_gte',
-        'force'
-      ],
-      name: 'version_type'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>/_source',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  }
-});
-
-/**
- * Perform a [getTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-template.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.id - Template ID
- */
-api.getTemplate = ca({
-  url: {
-    fmt: '/_search/template/<%=id%>',
-    req: {
-      id: {
-        type: 'string'
-      }
-    }
-  }
-});
-
-/**
- * Perform a [index](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-index_.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.consistency - Explicit write consistency setting for the operation
- * @param {String} params.parent - ID of the parent document
- * @param {Boolean} params.refresh - Refresh the index after performing the operation
- * @param {String} [params.replication=sync] - Specific replication type
- * @param {String} params.routing - Specific routing value
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.timestamp - Explicit timestamp for the document
- * @param {Duration} params.ttl - Expiration time for the document
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.id - Document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
- */
-api.index = ca({
-  params: {
-    consistency: {
-      type: 'enum',
-      options: [
-        'one',
-        'quorum',
-        'all'
-      ]
-    },
-    opType: {
-      type: 'enum',
-      'default': 'index',
-      options: [
-        'index',
-        'create'
-      ],
-      name: 'op_type'
-    },
-    parent: {
-      type: 'string'
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    replication: {
-      type: 'enum',
-      'default': 'sync',
-      options: [
-        'sync',
-        'async'
-      ]
-    },
-    routing: {
-      type: 'string'
-    },
-    timeout: {
-      type: 'time'
-    },
-    timestamp: {
-      type: 'time'
-    },
-    ttl: {
-      type: 'duration'
-    },
-    version: {
-      type: 'number'
-    },
-    versionType: {
-      type: 'enum',
-      options: [
-        'internal',
-        'external',
-        'external_gte',
-        'force'
-      ],
-      name: 'version_type'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/<%=id%>',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        },
-        id: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/<%=type%>',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    }
-  ],
-  needBody: true,
-  method: 'POST'
-});
-
-api.indices = namespace();
-
-/**
- * Perform a [indices.analyze](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-analyze.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.analyzer - The name of the analyzer to use
- * @param {String, String[], Boolean} params.charFilters - A comma-separated list of character filters to use for the analysis
- * @param {String} params.field - Use the analyzer configured for this field (instead of passing the analyzer name)
- * @param {String, String[], Boolean} params.filters - A comma-separated list of filters to use for the analysis
- * @param {String} params.index - The name of the index to scope the operation
- * @param {Boolean} params.preferLocal - With `true`, specify that a local shard should be used if available, with `false`, use a random shard (default: true)
- * @param {String} params.text - The text on which the analysis should be performed (when request body is not used)
- * @param {String} params.tokenizer - The name of the tokenizer to use for the analysis
- * @param {String} [params.format=detailed] - Format of the output
- */
-api.indices.prototype.analyze = ca({
-  params: {
-    analyzer: {
-      type: 'string'
-    },
-    charFilters: {
-      type: 'list',
-      name: 'char_filters'
-    },
-    field: {
-      type: 'string'
-    },
-    filters: {
-      type: 'list'
-    },
-    index: {
-      type: 'string'
-    },
-    preferLocal: {
-      type: 'boolean',
-      name: 'prefer_local'
-    },
-    text: {
-      type: 'string'
-    },
-    tokenizer: {
-      type: 'string'
-    },
-    format: {
-      type: 'enum',
-      'default': 'detailed',
-      options: [
-        'detailed',
-        'text'
-      ]
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_analyze',
-      req: {
-        index: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_analyze'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.clearCache](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-clearcache.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.fieldData - Clear field data
- * @param {Boolean} params.fielddata - Clear field data
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to clear when using the `field_data` parameter (default: all)
- * @param {Boolean} params.filter - Clear filter caches
- * @param {Boolean} params.filterCache - Clear filter caches
- * @param {Boolean} params.filterKeys - A comma-separated list of keys to clear when using the `filter_cache` parameter (default: all)
- * @param {Boolean} params.id - Clear ID caches for parent/child
- * @param {Boolean} params.idCache - Clear ID caches for parent/child
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String, String[], Boolean} params.index - A comma-separated list of index name to limit the operation
- * @param {Boolean} params.recycler - Clear the recycler cache
- */
-api.indices.prototype.clearCache = ca({
-  params: {
-    fieldData: {
-      type: 'boolean',
-      name: 'field_data'
-    },
-    fielddata: {
-      type: 'boolean'
-    },
-    fields: {
-      type: 'list'
-    },
-    filter: {
-      type: 'boolean'
-    },
-    filterCache: {
-      type: 'boolean',
-      name: 'filter_cache'
-    },
-    filterKeys: {
-      type: 'boolean',
-      name: 'filter_keys'
-    },
-    id: {
-      type: 'boolean'
-    },
-    idCache: {
-      type: 'boolean',
-      name: 'id_cache'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    index: {
-      type: 'list'
-    },
-    recycler: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_cache/clear',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_cache/clear'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.close](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-open-close.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.index - The name of the index
- */
-api.indices.prototype.close = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/_close',
-    req: {
-      index: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-create-index.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {String} params.index - The name of the index
- */
-api.indices.prototype.create = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>',
-    req: {
-      index: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.delete](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-delete-index.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {String, String[], Boolean} params.index - A comma-separated list of indices to delete; use `_all` or `*` string to delete all indices
- */
-api.indices.prototype['delete'] = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>',
-    req: {
-      index: {
-        type: 'list'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [indices.deleteAlias](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-aliases.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit timestamp for the document
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names (supports wildcards); use `_all` for all indices
- * @param {String, String[], Boolean} params.name - A comma-separated list of aliases to delete (supports wildcards); use `_all` to delete all aliases for the specified indices.
- */
-api.indices.prototype.deleteAlias = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/_alias/<%=name%>',
-    req: {
-      index: {
-        type: 'list'
-      },
-      name: {
-        type: 'list'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [indices.deleteMapping](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-delete-mapping.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names (supports wildcards); use `_all` for all indices
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to delete (supports wildcards); use `_all` to delete all document types in the specified indices.
- */
-api.indices.prototype.deleteMapping = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/_mapping',
-    req: {
-      index: {
-        type: 'list'
-      },
-      type: {
-        type: 'list'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [indices.deleteTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-templates.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {String} params.name - The name of the template
- */
-api.indices.prototype.deleteTemplate = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/_template/<%=name%>',
-    req: {
-      name: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [indices.deleteWarmer](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-warmers.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {String, String[], Boolean} params.name - A comma-separated list of warmer names to delete (supports wildcards); use `_all` to delete all warmers in the specified indices. You must specify a name either in the uri or in the parameters.
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to delete warmers from (supports wildcards); use `_all` to perform the operation on all indices.
- */
-api.indices.prototype.deleteWarmer = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    name: {
-      type: 'list'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/_warmer/<%=name%>',
-    req: {
-      index: {
-        type: 'list'
-      },
-      name: {
-        type: 'list'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [indices.exists](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-get-settings.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of indices to check
- */
-api.indices.prototype.exists = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>',
-    req: {
-      index: {
-        type: 'list'
-      }
-    }
-  },
-  method: 'HEAD'
-});
-
-/**
- * Perform a [indices.existsAlias](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-aliases.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open,closed] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to filter aliases
- * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to return
- */
-api.indices.prototype.existsAlias = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': [
-        'open',
-        'closed'
-      ],
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_alias/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_alias/<%=name%>',
-      req: {
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_alias',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    }
-  ],
-  method: 'HEAD'
-});
-
-/**
- * Perform a [indices.existsTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-templates.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String} params.name - The name of the template
- */
-api.indices.prototype.existsTemplate = ca({
-  params: {
-    local: {
-      type: 'boolean'
-    }
-  },
-  url: {
-    fmt: '/_template/<%=name%>',
-    req: {
-      name: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'HEAD'
-});
-
-/**
- * Perform a [indices.existsType](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-types-exists.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` to check the types across all indices
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to check
- */
-api.indices.prototype.existsType = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>',
-    req: {
-      index: {
-        type: 'list'
-      },
-      type: {
-        type: 'list'
-      }
-    }
-  },
-  method: 'HEAD'
-});
-
-/**
- * Perform a [indices.flush](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-flush.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.force - Whether a flush should be forced even if it is not necessarily needed ie. if no changes will be committed to the index. This is useful if transaction log IDs should be incremented even if no uncommitted changes are present. (This setting can be considered as internal)
- * @param {Boolean} params.full - If set to true a new index writer is created and settings that have been changed related to the index writer will be refreshed. Note: if a full flush is required for a setting to take effect this will be part of the settings update process and it not required to be executed by the user. (This setting can be considered as internal)
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string for all indices
- */
-api.indices.prototype.flush = ca({
-  params: {
-    force: {
-      type: 'boolean'
-    },
-    full: {
-      type: 'boolean'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_flush',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_flush'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.getAlias](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-aliases.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to filter aliases
- * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to return
- */
-api.indices.prototype.getAlias = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_alias/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_alias/<%=name%>',
-      req: {
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_alias',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_alias'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.getAliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-aliases.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to filter aliases
- * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to filter
- */
-api.indices.prototype.getAliases = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_aliases/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_aliases',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_aliases/<%=name%>',
-      req: {
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_aliases'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.getFieldMapping](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-get-field-mapping.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.includeDefaults - Whether the default mapping values should be returned as well
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types
- * @param {String, String[], Boolean} params.field - A comma-separated list of fields
- */
-api.indices.prototype.getFieldMapping = ca({
-  params: {
-    includeDefaults: {
-      type: 'boolean',
-      name: 'include_defaults'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_mapping/<%=type%>/field/<%=field%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        },
-        field: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_mapping/field/<%=field%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        field: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_mapping/<%=type%>/field/<%=field%>',
-      req: {
-        type: {
-          type: 'list'
-        },
-        field: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_mapping/field/<%=field%>',
-      req: {
-        field: {
-          type: 'list'
-        }
-      }
-    }
-  ]
-});
-
-/**
- * Perform a [indices.getMapping](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-get-mapping.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String, String[], Boolean} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types
- */
-api.indices.prototype.getMapping = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'list',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_mapping/<%=type%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_mapping',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_mapping/<%=type%>',
-      req: {
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_mapping'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.getSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-get-settings.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open,closed] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- * @param {String, String[], Boolean} params.name - The name of the settings that should be included
- */
-api.indices.prototype.getSettings = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': [
-        'open',
-        'closed'
-      ],
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_settings/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_settings',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_settings/<%=name%>',
-      req: {
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_settings'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.getTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-templates.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String} params.name - The name of the template
- */
-api.indices.prototype.getTemplate = ca({
-  params: {
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_template/<%=name%>',
-      req: {
-        name: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_template'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.getWarmer](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-warmers.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to restrict the operation; use `_all` to perform the operation on all indices
- * @param {String, String[], Boolean} params.name - The name of the warmer (supports wildcards); leave empty to get all warmers
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to restrict the operation; leave empty to perform the operation on all types
- */
-api.indices.prototype.getWarmer = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_warmer/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        },
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_warmer/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_warmer',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_warmer/<%=name%>',
-      req: {
-        name: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_warmer'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.open](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-open-close.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=closed] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.index - The name of the index
- */
-api.indices.prototype.open = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'closed',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/_open',
-    req: {
-      index: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.optimize](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-optimize.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.flush - Specify whether the index should be flushed after performing the operation (default: true)
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Number} params.maxNumSegments - The number of segments the index should be merged into (default: dynamic)
- * @param {Boolean} params.onlyExpungeDeletes - Specify whether the operation should only expunge deleted documents
- * @param {Anything} params.operationThreading - TODO: ?
- * @param {Boolean} params.waitForMerge - Specify whether the request should block until the merge process is finished (default: true)
- * @param {Boolean} params.force - Force a merge operation to run, even if there is a single segment in the index (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- */
-api.indices.prototype.optimize = ca({
-  params: {
-    flush: {
-      type: 'boolean'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    maxNumSegments: {
-      type: 'number',
-      name: 'max_num_segments'
-    },
-    onlyExpungeDeletes: {
-      type: 'boolean',
-      name: 'only_expunge_deletes'
-    },
-    operationThreading: {
-      name: 'operation_threading'
-    },
-    waitForMerge: {
-      type: 'boolean',
-      name: 'wait_for_merge'
-    },
-    force: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_optimize',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_optimize'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.putAlias](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-aliases.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Explicit timestamp for the document
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names the alias should point to (supports wildcards); use `_all` or omit to perform the operation on all indices.
- * @param {String} params.name - The name of the alias to be created or updated
- */
-api.indices.prototype.putAlias = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_alias/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        name: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_alias/<%=name%>',
-      req: {
-        name: {
-          type: 'string'
-        }
-      }
-    }
-  ],
-  method: 'PUT'
-});
-
-/**
- * Perform a [indices.putMapping](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-put-mapping.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreConflicts - Specify whether to ignore conflicts while updating the mapping (default: false)
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names the mapping should be added to (supports wildcards); use `_all` or omit to add the mapping on all indices.
- * @param {String} params.type - The name of the document type
- */
-api.indices.prototype.putMapping = ca({
-  params: {
-    ignoreConflicts: {
-      type: 'boolean',
-      name: 'ignore_conflicts'
-    },
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_mapping/<%=type%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_mapping/<%=type%>',
-      req: {
-        type: {
-          type: 'string'
-        }
-      }
-    }
-  ],
-  needBody: true,
-  method: 'PUT'
-});
-
-/**
- * Perform a [indices.putSettings](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-update-settings.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- */
-api.indices.prototype.putSettings = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_settings',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_settings'
-    }
-  ],
-  needBody: true,
-  method: 'PUT'
-});
-
-/**
- * Perform a [indices.putTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-templates.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Number} params.order - The order for this template when merging multiple matching ones (higher numbers are merged later, overriding the lower numbers)
- * @param {Boolean} params.create - Whether the index template should only be added if new or can also replace an existing one
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {String} params.name - The name of the template
- */
-api.indices.prototype.putTemplate = ca({
-  params: {
-    order: {
-      type: 'number'
-    },
-    create: {
-      type: 'boolean',
-      'default': false
-    },
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    }
-  },
-  url: {
-    fmt: '/_template/<%=name%>',
-    req: {
-      name: {
-        type: 'string'
-      }
-    }
-  },
-  needBody: true,
-  method: 'PUT'
-});
-
-/**
- * Perform a [indices.putWarmer](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-warmers.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed) in the search request to warm
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices in the search request to warm. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both, in the search request to warm.
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to register the warmer for; use `_all` or omit to perform the operation on all indices
- * @param {String} params.name - The name of the warmer
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to register the warmer for; leave empty to perform the operation on all types
- */
-api.indices.prototype.putWarmer = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_warmer/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        },
-        name: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_warmer/<%=name%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        name: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_warmer/<%=name%>',
-      req: {
-        name: {
-          type: 'string'
-        }
-      }
-    }
-  ],
-  needBody: true,
-  method: 'PUT'
-});
-
-/**
- * Perform a [indices.recovery](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/indices-recovery.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.detailed - Whether to display detailed information about shard recovery
- * @param {Boolean} params.activeOnly - Display only those recoveries that are currently on-going
- * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- */
-api.indices.prototype.recovery = ca({
-  params: {
-    detailed: {
-      type: 'boolean',
-      'default': false
-    },
-    activeOnly: {
-      type: 'boolean',
-      'default': false,
-      name: 'active_only'
-    },
-    human: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_recovery',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_recovery'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.refresh](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-refresh.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.force - Force a refresh even if not required
- * @param {Anything} params.operationThreading - TODO: ?
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- */
-api.indices.prototype.refresh = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    force: {
-      type: 'boolean',
-      'default': false
-    },
-    operationThreading: {
-      name: 'operation_threading'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_refresh',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_refresh'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.segments](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-segments.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
- * @param {Anything} params.operationThreading - TODO: ?
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- */
-api.indices.prototype.segments = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    human: {
-      type: 'boolean',
-      'default': false
-    },
-    operationThreading: {
-      name: 'operation_threading'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_segments',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_segments'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.stats](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-stats.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.completionFields - A comma-separated list of fields for `fielddata` and `suggest` index metric (supports wildcards)
- * @param {String, String[], Boolean} params.fielddataFields - A comma-separated list of fields for `fielddata` index metric (supports wildcards)
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields for `fielddata` and `completion` index metric (supports wildcards)
- * @param {String, String[], Boolean} params.groups - A comma-separated list of search groups for `search` index metric
- * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
- * @param {String} [params.level=indices] - Return stats aggregated at cluster, index or shard level
- * @param {String, String[], Boolean} params.types - A comma-separated list of document types for the `indexing` index metric
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- * @param {String, String[], Boolean} params.metric - Limit the information returned the specific metrics.
- */
-api.indices.prototype.stats = ca({
-  params: {
-    completionFields: {
-      type: 'list',
-      name: 'completion_fields'
-    },
-    fielddataFields: {
-      type: 'list',
-      name: 'fielddata_fields'
-    },
-    fields: {
-      type: 'list'
-    },
-    groups: {
-      type: 'list'
-    },
-    human: {
-      type: 'boolean',
-      'default': false
-    },
-    level: {
-      type: 'enum',
-      'default': 'indices',
-      options: [
-        'cluster',
-        'indices',
-        'shards'
-      ]
-    },
-    types: {
-      type: 'list'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_stats/<%=metric%>',
-      req: {
-        index: {
-          type: 'list'
-        },
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'completion',
-            'docs',
-            'fielddata',
-            'filter_cache',
-            'flush',
-            'get',
-            'id_cache',
-            'indexing',
-            'merge',
-            'percolate',
-            'refresh',
-            'search',
-            'segments',
-            'store',
-            'warmer',
-            'suggest'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_stats/<%=metric%>',
-      req: {
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'completion',
-            'docs',
-            'fielddata',
-            'filter_cache',
-            'flush',
-            'get',
-            'id_cache',
-            'indexing',
-            'merge',
-            'percolate',
-            'refresh',
-            'search',
-            'segments',
-            'store',
-            'warmer',
-            'suggest'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_stats',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_stats'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.status](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-status.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
- * @param {Anything} params.operationThreading - TODO: ?
- * @param {Boolean} params.recovery - Return information about shard recovery
- * @param {Boolean} params.snapshot - TODO: ?
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
- */
-api.indices.prototype.status = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    human: {
-      type: 'boolean',
-      'default': false
-    },
-    operationThreading: {
-      name: 'operation_threading'
-    },
-    recovery: {
-      type: 'boolean'
-    },
-    snapshot: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_status',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_status'
-    }
-  ]
-});
-
-/**
- * Perform a [indices.updateAliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/indices-aliases.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.timeout - Request timeout
- * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
- */
-api.indices.prototype.updateAliases = ca({
-  params: {
-    timeout: {
-      type: 'time'
-    },
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/_aliases'
-  },
-  needBody: true,
-  method: 'POST'
-});
-
-/**
- * Perform a [indices.validateQuery](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-validate.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.explain - Return detailed information about the error
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {Anything} params.operationThreading - TODO: ?
- * @param {String} params.source - The URL-encoded query definition (instead of using the request body)
- * @param {String} params.q - Query in the Lucene query string syntax
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to restrict the operation; use `_all` or empty string to perform the operation on all indices
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to restrict the operation; leave empty to perform the operation on all types
- */
-api.indices.prototype.validateQuery = ca({
-  params: {
-    explain: {
-      type: 'boolean'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    operationThreading: {
-      name: 'operation_threading'
-    },
-    source: {
-      type: 'string'
-    },
-    q: {
-      type: 'string'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_validate/query',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_validate/query',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_validate/query'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [info](http://www.elasticsearch.org/guide/) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- */
-api.info = ca({
-  url: {
-    fmt: '/'
-  }
-});
-
-/**
- * Perform a [mget](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-multi-get.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
- * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
- * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
- * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
- * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
- */
-api.mget = ca({
-  params: {
-    fields: {
-      type: 'list'
-    },
-    preference: {
-      type: 'string'
-    },
-    realtime: {
-      type: 'boolean'
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    _source: {
-      type: 'list'
-    },
-    _sourceExclude: {
-      type: 'list',
-      name: '_source_exclude'
-    },
-    _sourceInclude: {
-      type: 'list',
-      name: '_source_include'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_mget',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_mget',
-      req: {
-        index: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_mget'
-    }
-  ],
-  needBody: true,
-  method: 'POST'
-});
-
-/**
- * Perform a [mlt](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-more-like-this.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Number} params.boostTerms - The boost factor
- * @param {Number} params.maxDocFreq - The word occurrence frequency as count: words with higher occurrence in the corpus will be ignored
- * @param {Number} params.maxQueryTerms - The maximum query terms to be included in the generated query
- * @param {Number} params.maxWordLength - The minimum length of the word: longer words will be ignored
- * @param {Number} params.minDocFreq - The word occurrence frequency as count: words with lower occurrence in the corpus will be ignored
- * @param {Number} params.minTermFreq - The term frequency as percent: terms with lower occurence in the source document will be ignored
- * @param {Number} params.minWordLength - The minimum length of the word: shorter words will be ignored
- * @param {String, String[], Boolean} params.mltFields - Specific fields to perform the query against
- * @param {Number} params.percentTermsToMatch - How many terms have to match in order to consider the document a match (default: 0.3)
- * @param {String} params.routing - Specific routing value
- * @param {Number} params.searchFrom - The offset from which to return results
- * @param {String, String[], Boolean} params.searchIndices - A comma-separated list of indices to perform the query against (default: the index containing the document)
- * @param {String} params.searchQueryHint - The search query hint
- * @param {String} params.searchScroll - A scroll search request definition
- * @param {Number} params.searchSize - The number of documents to return (default: 10)
- * @param {String} params.searchSource - A specific search request definition (instead of using the request body)
- * @param {String} params.searchType - Specific search type (eg. `dfs_then_fetch`, `count`, etc)
- * @param {String, String[], Boolean} params.searchTypes - A comma-separated list of types to perform the query against (default: the same type as the document)
- * @param {String, String[], Boolean} params.stopWords - A list of stop words to be ignored
- * @param {String} params.id - The document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document (use `_all` to fetch the first document matching the ID across all types)
- */
-api.mlt = ca({
-  params: {
-    boostTerms: {
-      type: 'number',
-      name: 'boost_terms'
-    },
-    maxDocFreq: {
-      type: 'number',
-      name: 'max_doc_freq'
-    },
-    maxQueryTerms: {
-      type: 'number',
-      name: 'max_query_terms'
-    },
-    maxWordLength: {
-      type: 'number',
-      name: 'max_word_length'
-    },
-    minDocFreq: {
-      type: 'number',
-      name: 'min_doc_freq'
-    },
-    minTermFreq: {
-      type: 'number',
-      name: 'min_term_freq'
-    },
-    minWordLength: {
-      type: 'number',
-      name: 'min_word_length'
-    },
-    mltFields: {
-      type: 'list',
-      name: 'mlt_fields'
-    },
-    percentTermsToMatch: {
-      type: 'number',
-      name: 'percent_terms_to_match'
-    },
-    routing: {
-      type: 'string'
-    },
-    searchFrom: {
-      type: 'number',
-      name: 'search_from'
-    },
-    searchIndices: {
-      type: 'list',
-      name: 'search_indices'
-    },
-    searchQueryHint: {
-      type: 'string',
-      name: 'search_query_hint'
-    },
-    searchScroll: {
-      type: 'string',
-      name: 'search_scroll'
-    },
-    searchSize: {
-      type: 'number',
-      name: 'search_size'
-    },
-    searchSource: {
-      type: 'string',
-      name: 'search_source'
-    },
-    searchType: {
-      type: 'string',
-      name: 'search_type'
-    },
-    searchTypes: {
-      type: 'list',
-      name: 'search_types'
-    },
-    stopWords: {
-      type: 'list',
-      name: 'stop_words'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>/_mlt',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [mpercolate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-percolate.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.index - The index of the document being count percolated to use as default
- * @param {String} params.type - The type of the document being percolated to use as default.
- */
-api.mpercolate = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_mpercolate',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_mpercolate',
-      req: {
-        index: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_mpercolate'
-    }
-  ],
-  needBody: true,
-  bulkBody: true,
-  method: 'POST'
-});
-
-/**
- * Perform a [msearch](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-multi-search.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.searchType - Search operation type
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to use as default
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to use as default
- */
-api.msearch = ca({
-  params: {
-    searchType: {
-      type: 'enum',
-      options: [
-        'query_then_fetch',
-        'query_and_fetch',
-        'dfs_query_then_fetch',
-        'dfs_query_and_fetch',
-        'count',
-        'scan'
-      ],
-      name: 'search_type'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_msearch',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_msearch',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_msearch'
-    }
-  ],
-  needBody: true,
-  bulkBody: true,
-  method: 'POST'
-});
-
-/**
- * Perform a [mtermvectors](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-multi-termvectors.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.ids - A comma-separated list of documents ids. You must define ids as parameter or set "ids" or "docs" in the request body
- * @param {Boolean} params.termStatistics - Specifies if total term frequency and document frequency should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {Boolean} [params.fieldStatistics=true] - Specifies if document count, sum of document frequencies and sum of total term frequencies should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {Boolean} [params.offsets=true] - Specifies if term offsets should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {Boolean} [params.positions=true] - Specifies if term positions should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {Boolean} [params.payloads=true] - Specifies if term payloads should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random) .Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {String} params.routing - Specific routing value. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {String} params.parent - Parent id of documents. Applies to all returned documents unless otherwise specified in body "params" or "docs".
- * @param {String} params.index - The index in which the document resides.
- * @param {String} params.type - The type of the document.
- * @param {String} params.id - The id of the document.
- */
-api.mtermvectors = ca({
-  params: {
-    ids: {
-      type: 'list',
-      required: false
-    },
-    termStatistics: {
-      type: 'boolean',
-      'default': false,
-      required: false,
-      name: 'term_statistics'
-    },
-    fieldStatistics: {
-      type: 'boolean',
-      'default': true,
-      required: false,
-      name: 'field_statistics'
-    },
-    fields: {
-      type: 'list',
-      required: false
-    },
-    offsets: {
-      type: 'boolean',
-      'default': true,
-      required: false
-    },
-    positions: {
-      type: 'boolean',
-      'default': true,
-      required: false
-    },
-    payloads: {
-      type: 'boolean',
-      'default': true,
-      required: false
-    },
-    preference: {
-      type: 'string',
-      required: false
-    },
-    routing: {
-      type: 'string',
-      required: false
-    },
-    parent: {
-      type: 'string',
-      required: false
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_mtermvectors',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_mtermvectors',
-      req: {
-        index: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_mtermvectors'
-    }
-  ],
-  method: 'POST'
-});
-
-api.nodes = namespace();
-
-/**
- * Perform a [nodes.hotThreads](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-nodes-hot-threads.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.interval - The interval for the second sampling of threads
- * @param {Number} params.snapshots - Number of samples of thread stacktrace (default: 10)
- * @param {Number} params.threads - Specify the number of threads to provide information for (default: 3)
- * @param {String} params.type - The type to sample (default: cpu)
- * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
- */
-api.nodes.prototype.hotThreads = ca({
-  params: {
-    interval: {
-      type: 'time'
-    },
-    snapshots: {
-      type: 'number'
-    },
-    threads: {
-      type: 'number'
-    },
-    type: {
-      type: 'enum',
-      options: [
-        'cpu',
-        'wait',
-        'block'
-      ]
-    }
-  },
-  urls: [
-    {
-      fmt: '/_nodes/<%=nodeId%>/hotthreads',
-      req: {
-        nodeId: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/hotthreads'
-    }
-  ]
-});
-
-/**
- * Perform a [nodes.info](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-nodes-info.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
- * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
- * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
- * @param {String, String[], Boolean} params.metric - A comma-separated list of metrics you wish returned. Leave empty to return all.
- */
-api.nodes.prototype.info = ca({
-  params: {
-    flatSettings: {
-      type: 'boolean',
-      name: 'flat_settings'
-    },
-    human: {
-      type: 'boolean',
-      'default': false
-    }
-  },
-  urls: [
-    {
-      fmt: '/_nodes/<%=nodeId%>/<%=metric%>',
-      req: {
-        nodeId: {
-          type: 'list'
-        },
-        metric: {
-          type: 'list',
-          options: [
-            'settings',
-            'os',
-            'process',
-            'jvm',
-            'thread_pool',
-            'network',
-            'transport',
-            'http',
-            'plugins'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/<%=nodeId%>',
-      req: {
-        nodeId: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/<%=metric%>',
-      req: {
-        metric: {
-          type: 'list',
-          options: [
-            'settings',
-            'os',
-            'process',
-            'jvm',
-            'thread_pool',
-            'network',
-            'transport',
-            'http',
-            'plugins'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_nodes'
-    }
-  ]
-});
-
-/**
- * Perform a [nodes.shutdown](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-nodes-shutdown.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.delay - Set the delay for the operation (default: 1s)
- * @param {Boolean} params.exit - Exit the JVM as well (default: true)
- * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to perform the operation on; use `_local` to perform the operation on the node you're connected to, leave empty to perform the operation on all nodes
- */
-api.nodes.prototype.shutdown = ca({
-  params: {
-    delay: {
-      type: 'time'
-    },
-    exit: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_cluster/nodes/<%=nodeId%>/_shutdown',
-      req: {
-        nodeId: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_shutdown'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [nodes.stats](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/cluster-nodes-stats.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.completionFields - A comma-separated list of fields for `fielddata` and `suggest` index metric (supports wildcards)
- * @param {String, String[], Boolean} params.fielddataFields - A comma-separated list of fields for `fielddata` index metric (supports wildcards)
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields for `fielddata` and `completion` index metric (supports wildcards)
- * @param {Boolean} params.groups - A comma-separated list of search groups for `search` index metric
- * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
- * @param {String} [params.level=node] - Return indices stats aggregated at node, index or shard level
- * @param {String, String[], Boolean} params.types - A comma-separated list of document types for the `indexing` index metric
- * @param {String, String[], Boolean} params.metric - Limit the information returned to the specified metrics
- * @param {String, String[], Boolean} params.indexMetric - Limit the information returned for `indices` metric to the specific index metrics. Isn't used if `indices` (or `all`) metric isn't specified.
- * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
- */
-api.nodes.prototype.stats = ca({
-  params: {
-    completionFields: {
-      type: 'list',
-      name: 'completion_fields'
-    },
-    fielddataFields: {
-      type: 'list',
-      name: 'fielddata_fields'
-    },
-    fields: {
-      type: 'list'
-    },
-    groups: {
-      type: 'boolean'
-    },
-    human: {
-      type: 'boolean',
-      'default': false
-    },
-    level: {
-      type: 'enum',
-      'default': 'node',
-      options: [
-        'node',
-        'indices',
-        'shards'
-      ]
-    },
-    types: {
-      type: 'list'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_nodes/<%=nodeId%>/stats/<%=metric%>/<%=indexMetric%>',
-      req: {
-        nodeId: {
-          type: 'list'
-        },
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'breaker',
-            'fs',
-            'http',
-            'indices',
-            'jvm',
-            'network',
-            'os',
-            'process',
-            'thread_pool',
-            'transport'
-          ]
-        },
-        indexMetric: {
-          type: 'list',
-          options: [
-            '_all',
-            'completion',
-            'docs',
-            'fielddata',
-            'filter_cache',
-            'flush',
-            'get',
-            'id_cache',
-            'indexing',
-            'merge',
-            'percolate',
-            'refresh',
-            'search',
-            'segments',
-            'store',
-            'warmer',
-            'suggest'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/<%=nodeId%>/stats/<%=metric%>',
-      req: {
-        nodeId: {
-          type: 'list'
-        },
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'breaker',
-            'fs',
-            'http',
-            'indices',
-            'jvm',
-            'network',
-            'os',
-            'process',
-            'thread_pool',
-            'transport'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/stats/<%=metric%>/<%=indexMetric%>',
-      req: {
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'breaker',
-            'fs',
-            'http',
-            'indices',
-            'jvm',
-            'network',
-            'os',
-            'process',
-            'thread_pool',
-            'transport'
-          ]
-        },
-        indexMetric: {
-          type: 'list',
-          options: [
-            '_all',
-            'completion',
-            'docs',
-            'fielddata',
-            'filter_cache',
-            'flush',
-            'get',
-            'id_cache',
-            'indexing',
-            'merge',
-            'percolate',
-            'refresh',
-            'search',
-            'segments',
-            'store',
-            'warmer',
-            'suggest'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/<%=nodeId%>/stats',
-      req: {
-        nodeId: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/stats/<%=metric%>',
-      req: {
-        metric: {
-          type: 'list',
-          options: [
-            '_all',
-            'breaker',
-            'fs',
-            'http',
-            'indices',
-            'jvm',
-            'network',
-            'os',
-            'process',
-            'thread_pool',
-            'transport'
-          ]
-        }
-      }
-    },
-    {
-      fmt: '/_nodes/stats'
-    }
-  ]
-});
-
-/**
- * Perform a [percolate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-percolate.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.percolateIndex - The index to percolate the document into. Defaults to index.
- * @param {String} params.percolateType - The type to percolate document into. Defaults to type.
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.index - The index of the document being percolated.
- * @param {String} params.type - The type of the document being percolated.
- * @param {String} params.id - Substitute the document in the request body with a document that is known by the specified id. On top of the id, the index and type parameter will be used to retrieve the document from within the cluster.
- */
-api.percolate = ca({
-  params: {
-    routing: {
-      type: 'list'
-    },
-    preference: {
-      type: 'string'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    percolateIndex: {
-      type: 'string',
-      name: 'percolate_index'
-    },
-    percolateType: {
-      type: 'string',
-      name: 'percolate_type'
-    },
-    version: {
-      type: 'number'
-    },
-    versionType: {
-      type: 'enum',
-      options: [
-        'internal',
-        'external',
-        'external_gte',
-        'force'
-      ],
-      name: 'version_type'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/<%=id%>/_percolate',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        },
-        id: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/<%=type%>/_percolate',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [ping](http://www.elasticsearch.org/guide/) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- */
-api.ping = ca({
-  url: {
-    fmt: '/'
-  },
-  requestTimeout: 3000,
-  method: 'HEAD'
-});
-
-/**
- * Perform a [putScript](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/modules-scripting.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.id - Script ID
- * @param {String} params.lang - Script language
- */
-api.putScript = ca({
-  url: {
-    fmt: '/_scripts/<%=lang%>/<%=id%>',
-    req: {
-      lang: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  needBody: true,
-  method: 'PUT'
-});
-
-/**
- * Perform a [putTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-template.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.id - Template ID
- */
-api.putTemplate = ca({
-  url: {
-    fmt: '/_search/template/<%=id%>',
-    req: {
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  needBody: true,
-  method: 'PUT'
-});
-
-/**
- * Perform a [scroll](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-request-scroll.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Duration} params.scroll - Specify how long a consistent view of the index should be maintained for scrolled search
- * @param {String} params.scrollId - The scroll ID
- */
-api.scroll = ca({
-  params: {
-    scroll: {
-      type: 'duration'
-    },
-    scrollId: {
-      type: 'string',
-      name: 'scroll_id'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_search/scroll/<%=scrollId%>',
-      req: {
-        scrollId: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_search/scroll'
-    }
-  ],
-  paramAsBody: 'scrollId',
-  method: 'POST'
-});
-
-/**
- * Perform a [search](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-search.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.analyzer - The analyzer to use for the query string
- * @param {Boolean} params.analyzeWildcard - Specify whether wildcard and prefix queries should be analyzed (default: false)
- * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
- * @param {String} params.df - The field to use as default where no field prefix is given in the query string
- * @param {Boolean} params.explain - Specify whether to return detailed information about score computation as part of a hit
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return as part of a hit
- * @param {String, String[], Boolean} params.fielddataFields - A comma-separated list of fields to return as the field data representation of a field for each hit
- * @param {Number} params.from - Starting offset (default: 0)
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String, String[], Boolean} params.indicesBoost - Comma-separated list of index boosts
- * @param {Boolean} params.lenient - Specify whether format-based query failures (such as providing text to a numeric field) should be ignored
- * @param {Boolean} params.lowercaseExpandedTerms - Specify whether query terms should be lowercased
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {String} params.q - Query in the Lucene query string syntax
- * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
- * @param {Duration} params.scroll - Specify how long a consistent view of the index should be maintained for scrolled search
- * @param {String} params.searchType - Search operation type
- * @param {Number} params.size - Number of hits to return (default: 10)
- * @param {String, String[], Boolean} params.sort - A comma-separated list of <field>:<direction> pairs
- * @param {String} params.source - The URL-encoded request definition using the Query DSL (instead of using request body)
- * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
- * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
- * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
- * @param {String, String[], Boolean} params.stats - Specific 'tag' of the request for logging and statistical purposes
- * @param {String} params.suggestField - Specify which field to use for suggestions
- * @param {String} [params.suggestMode=missing] - Specify suggest mode
- * @param {Number} params.suggestSize - How many suggestions to return in response
- * @param {Text} params.suggestText - The source text for which the suggestions should be returned
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Boolean} params.trackScores - Whether to calculate and return scores even if they are not used for sorting
- * @param {Boolean} params.version - Specify whether to return document version as part of a hit
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to search; use `_all` or empty string to perform the operation on all indices
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to search; leave empty to perform the operation on all types
- */
-api.search = ca({
-  params: {
-    analyzer: {
-      type: 'string'
-    },
-    analyzeWildcard: {
-      type: 'boolean',
-      name: 'analyze_wildcard'
-    },
-    defaultOperator: {
-      type: 'enum',
-      'default': 'OR',
-      options: [
-        'AND',
-        'OR'
-      ],
-      name: 'default_operator'
-    },
-    df: {
-      type: 'string'
-    },
-    explain: {
-      type: 'boolean'
-    },
-    fields: {
-      type: 'list'
-    },
-    fielddataFields: {
-      type: 'list',
-      name: 'fielddata_fields'
-    },
-    from: {
-      type: 'number'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    indicesBoost: {
-      type: 'list',
-      name: 'indices_boost'
-    },
-    lenient: {
-      type: 'boolean'
-    },
-    lowercaseExpandedTerms: {
-      type: 'boolean',
-      name: 'lowercase_expanded_terms'
-    },
-    preference: {
-      type: 'string'
-    },
-    q: {
-      type: 'string'
-    },
-    routing: {
-      type: 'list'
-    },
-    scroll: {
-      type: 'duration'
-    },
-    searchType: {
-      type: 'enum',
-      options: [
-        'query_then_fetch',
-        'query_and_fetch',
-        'dfs_query_then_fetch',
-        'dfs_query_and_fetch',
-        'count',
-        'scan'
-      ],
-      name: 'search_type'
-    },
-    size: {
-      type: 'number'
-    },
-    sort: {
-      type: 'list'
-    },
-    source: {
-      type: 'string'
-    },
-    _source: {
-      type: 'list'
-    },
-    _sourceExclude: {
-      type: 'list',
-      name: '_source_exclude'
-    },
-    _sourceInclude: {
-      type: 'list',
-      name: '_source_include'
-    },
-    stats: {
-      type: 'list'
-    },
-    suggestField: {
-      type: 'string',
-      name: 'suggest_field'
-    },
-    suggestMode: {
-      type: 'enum',
-      'default': 'missing',
-      options: [
-        'missing',
-        'popular',
-        'always'
-      ],
-      name: 'suggest_mode'
-    },
-    suggestSize: {
-      type: 'number',
-      name: 'suggest_size'
-    },
-    suggestText: {
-      type: 'text',
-      name: 'suggest_text'
-    },
-    timeout: {
-      type: 'time'
-    },
-    trackScores: {
-      type: 'boolean',
-      name: 'track_scores'
-    },
-    version: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_search',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_search',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_search'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [searchShards](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/search-shards.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {String} params.routing - Specific routing value
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
- */
-api.searchShards = ca({
-  params: {
-    preference: {
-      type: 'string'
-    },
-    routing: {
-      type: 'string'
-    },
-    local: {
-      type: 'boolean'
-    },
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_search_shards',
-      req: {
-        index: {
-          type: 'string'
-        },
-        type: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_search_shards',
-      req: {
-        index: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_search_shards'
-    }
-  ],
-  method: 'POST'
-});
-
-/**
- * Perform a [searchTemplate](http://www.elasticsearch.org/guide/en/elasticsearch/reference/current/search-template.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
- * @param {Duration} params.scroll - Specify how long a consistent view of the index should be maintained for scrolled search
- * @param {String} params.searchType - Search operation type
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to search; use `_all` or empty string to perform the operation on all indices
- * @param {String, String[], Boolean} params.type - A comma-separated list of document types to search; leave empty to perform the operation on all types
- */
-api.searchTemplate = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    preference: {
-      type: 'string'
-    },
-    routing: {
-      type: 'list'
-    },
-    scroll: {
-      type: 'duration'
-    },
-    searchType: {
-      type: 'enum',
-      options: [
-        'query_then_fetch',
-        'query_and_fetch',
-        'dfs_query_then_fetch',
-        'dfs_query_and_fetch',
-        'count',
-        'scan'
-      ],
-      name: 'search_type'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/<%=type%>/_search/template',
-      req: {
-        index: {
-          type: 'list'
-        },
-        type: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/<%=index%>/_search/template',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_search/template'
-    }
-  ],
-  method: 'POST'
-});
-
-api.snapshot = namespace();
-
-/**
- * Perform a [snapshot.create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Boolean} params.waitForCompletion - Should this request wait until the operation has completed before returning
- * @param {String} params.repository - A repository name
- * @param {String} params.snapshot - A snapshot name
- */
-api.snapshot.prototype.create = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    waitForCompletion: {
-      type: 'boolean',
-      'default': false,
-      name: 'wait_for_completion'
-    }
-  },
-  url: {
-    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_create',
-    req: {
-      repository: {
-        type: 'string'
-      },
-      snapshot: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [snapshot.createRepository](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {String} params.repository - A repository name
- */
-api.snapshot.prototype.createRepository = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    timeout: {
-      type: 'time'
-    }
-  },
-  url: {
-    fmt: '/_snapshot/<%=repository%>',
-    req: {
-      repository: {
-        type: 'string'
-      }
-    }
-  },
-  needBody: true,
-  method: 'POST'
-});
-
-/**
- * Perform a [snapshot.delete](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String} params.repository - A repository name
- * @param {String} params.snapshot - A snapshot name
- */
-api.snapshot.prototype['delete'] = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>',
-    req: {
-      repository: {
-        type: 'string'
-      },
-      snapshot: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [snapshot.deleteRepository](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {String, String[], Boolean} params.repository - A comma-separated list of repository names
- */
-api.snapshot.prototype.deleteRepository = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    timeout: {
-      type: 'time'
-    }
-  },
-  url: {
-    fmt: '/_snapshot/<%=repository%>',
-    req: {
-      repository: {
-        type: 'list'
-      }
-    }
-  },
-  method: 'DELETE'
-});
-
-/**
- * Perform a [snapshot.get](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String} params.repository - A repository name
- * @param {String, String[], Boolean} params.snapshot - A comma-separated list of snapshot names
- */
-api.snapshot.prototype.get = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  url: {
-    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>',
-    req: {
-      repository: {
-        type: 'string'
-      },
-      snapshot: {
-        type: 'list'
-      }
-    }
-  }
-});
-
-/**
- * Perform a [snapshot.getRepository](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
- * @param {String, String[], Boolean} params.repository - A comma-separated list of repository names
- */
-api.snapshot.prototype.getRepository = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    local: {
-      type: 'boolean'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_snapshot/<%=repository%>',
-      req: {
-        repository: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_snapshot'
-    }
-  ]
-});
-
-/**
- * Perform a [snapshot.restore](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {Boolean} params.waitForCompletion - Should this request wait until the operation has completed before returning
- * @param {String} params.repository - A repository name
- * @param {String} params.snapshot - A snapshot name
- */
-api.snapshot.prototype.restore = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    },
-    waitForCompletion: {
-      type: 'boolean',
-      'default': false,
-      name: 'wait_for_completion'
-    }
-  },
-  url: {
-    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_restore',
-    req: {
-      repository: {
-        type: 'string'
-      },
-      snapshot: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [snapshot.status](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/modules-snapshots.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
- * @param {String} params.repository - A repository name
- * @param {String, String[], Boolean} params.snapshot - A comma-separated list of snapshot names
- */
-api.snapshot.prototype.status = ca({
-  params: {
-    masterTimeout: {
-      type: 'time',
-      name: 'master_timeout'
-    }
-  },
-  urls: [
-    {
-      fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_status',
-      req: {
-        repository: {
-          type: 'string'
-        },
-        snapshot: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_snapshot/<%=repository%>/_status',
-      req: {
-        repository: {
-          type: 'string'
-        }
-      }
-    },
-    {
-      fmt: '/_snapshot/_status'
-    }
-  ]
-});
-
-/**
- * Perform a [suggest](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/search-suggesters.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
- * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
- * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
- * @param {String} params.routing - Specific routing value
- * @param {String} params.source - The URL-encoded request definition (instead of using request body)
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names to restrict the operation; use `_all` or empty string to perform the operation on all indices
- */
-api.suggest = ca({
-  params: {
-    ignoreUnavailable: {
-      type: 'boolean',
-      name: 'ignore_unavailable'
-    },
-    allowNoIndices: {
-      type: 'boolean',
-      name: 'allow_no_indices'
-    },
-    expandWildcards: {
-      type: 'enum',
-      'default': 'open',
-      options: [
-        'open',
-        'closed'
-      ],
-      name: 'expand_wildcards'
-    },
-    preference: {
-      type: 'string'
-    },
-    routing: {
-      type: 'string'
-    },
-    source: {
-      type: 'string'
-    }
-  },
-  urls: [
-    {
-      fmt: '/<%=index%>/_suggest',
-      req: {
-        index: {
-          type: 'list'
-        }
-      }
-    },
-    {
-      fmt: '/_suggest'
-    }
-  ],
-  needBody: true,
-  method: 'POST'
-});
-
-/**
- * Perform a [termvector](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-termvectors.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {Boolean} params.termStatistics - Specifies if total term frequency and document frequency should be returned.
- * @param {Boolean} [params.fieldStatistics=true] - Specifies if document count, sum of document frequencies and sum of total term frequencies should be returned.
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return.
- * @param {Boolean} [params.offsets=true] - Specifies if term offsets should be returned.
- * @param {Boolean} [params.positions=true] - Specifies if term positions should be returned.
- * @param {Boolean} [params.payloads=true] - Specifies if term payloads should be returned.
- * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random).
- * @param {String} params.routing - Specific routing value.
- * @param {String} params.parent - Parent id of documents.
- * @param {String} params.index - The index in which the document resides.
- * @param {String} params.type - The type of the document.
- * @param {String} params.id - The id of the document.
- */
-api.termvector = ca({
-  params: {
-    termStatistics: {
-      type: 'boolean',
-      'default': false,
-      required: false,
-      name: 'term_statistics'
-    },
-    fieldStatistics: {
-      type: 'boolean',
-      'default': true,
-      required: false,
-      name: 'field_statistics'
-    },
-    fields: {
-      type: 'list',
-      required: false
-    },
-    offsets: {
-      type: 'boolean',
-      'default': true,
-      required: false
-    },
-    positions: {
-      type: 'boolean',
-      'default': true,
-      required: false
-    },
-    payloads: {
-      type: 'boolean',
-      'default': true,
-      required: false
-    },
-    preference: {
-      type: 'string',
-      required: false
-    },
-    routing: {
-      type: 'string',
-      required: false
-    },
-    parent: {
-      type: 'string',
-      required: false
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>/_termvector',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [update](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-update.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.consistency - Explicit write consistency setting for the operation
- * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
- * @param {String} params.lang - The script language (default: mvel)
- * @param {String} params.parent - ID of the parent document
- * @param {Boolean} params.refresh - Refresh the index after performing the operation
- * @param {String} [params.replication=sync] - Specific replication type
- * @param {Number} params.retryOnConflict - Specify how many times should the operation be retried when a conflict occurs (default: 0)
- * @param {String} params.routing - Specific routing value
- * @param {Anything} params.script - The URL-encoded script definition (instead of using request body)
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.timestamp - Explicit timestamp for the document
- * @param {Duration} params.ttl - Expiration time for the document
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.id - Document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
- */
-api.update = ca({
-  params: {
-    consistency: {
-      type: 'enum',
-      options: [
-        'one',
-        'quorum',
-        'all'
-      ]
-    },
-    fields: {
-      type: 'list'
-    },
-    lang: {
-      type: 'string'
-    },
-    parent: {
-      type: 'string'
-    },
-    refresh: {
-      type: 'boolean'
-    },
-    replication: {
-      type: 'enum',
-      'default': 'sync',
-      options: [
-        'sync',
-        'async'
-      ]
-    },
-    retryOnConflict: {
-      type: 'number',
-      name: 'retry_on_conflict'
-    },
-    routing: {
-      type: 'string'
-    },
-    script: {},
-    timeout: {
-      type: 'time'
-    },
-    timestamp: {
-      type: 'time'
-    },
-    ttl: {
-      type: 'duration'
-    },
-    version: {
-      type: 'number'
-    },
-    versionType: {
-      type: 'enum',
-      options: [
-        'internal',
-        'force'
-      ],
-      name: 'version_type'
-    }
-  },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>/_update',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
-      }
-    }
-  },
-  method: 'POST'
-});
-
-/**
- * Perform a [create](http://www.elasticsearch.org/guide/en/elasticsearch/reference/1.3/docs-index_.html) request
- *
- * @param {Object} params - An object with parameters used to carry out this action
- * @param {String} params.consistency - Explicit write consistency setting for the operation
- * @param {String} params.parent - ID of the parent document
- * @param {Boolean} params.refresh - Refresh the index after performing the operation
- * @param {String} [params.replication=sync] - Specific replication type
- * @param {String} params.routing - Specific routing value
- * @param {Date, Number} params.timeout - Explicit operation timeout
- * @param {Date, Number} params.timestamp - Explicit timestamp for the document
- * @param {Duration} params.ttl - Expiration time for the document
- * @param {Number} params.version - Explicit version number for concurrency control
- * @param {String} params.versionType - Specific version type
- * @param {String} params.id - Document ID
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
- */
-api.create = proxy(api.index, {
-  transform: function (params) {
-    params.op_type = 'create';
-  }
-});
-},{"../client_action":22}],18:[function(require,module,exports){
-/* jshint maxlen: false */
-
-var ca = require('../client_action').factory;
-var proxy = require('../client_action').proxyFactory;
 var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
@@ -34887,16 +30027,15 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = proxy(api.index, {
+api.create = ca.proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
 });
-},{"../client_action":22}],19:[function(require,module,exports){
+},{"../client_action":22}],18:[function(require,module,exports){
 /* jshint maxlen: false */
 
 var ca = require('../client_action').factory;
-var proxy = require('../client_action').proxyFactory;
 var namespace = require('../client_action').namespaceFactory;
 var api = module.exports = {};
 
@@ -40964,20 +36103,33 @@ api.termvector = ca({
       required: false
     }
   },
-  url: {
-    fmt: '/<%=index%>/<%=type%>/<%=id%>/_termvector',
-    req: {
-      index: {
-        type: 'string'
-      },
-      type: {
-        type: 'string'
-      },
-      id: {
-        type: 'string'
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/<%=id%>/_termvector',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        },
+        id: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/<%=type%>/_termvector',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
       }
     }
-  },
+  ],
   method: 'POST'
 });
 
@@ -41106,19 +36258,6379 @@ api.update = ca({
  * @param {String} params.index - The name of the index
  * @param {String} params.type - The type of the document
  */
-api.create = proxy(api.index, {
+api.create = ca.proxy(api.index, {
   transform: function (params) {
     params.op_type = 'create';
   }
 });
-},{"../client_action":22}],20:[function(require,module,exports){
+},{"../client_action":22}],19:[function(require,module,exports){
+/* jshint maxlen: false */
+
+var ca = require('../client_action').makeFactoryWithModifier(function (spec) {
+  return require('../utils').merge(spec, {
+    params: {
+      filterPath: {
+        type: 'list',
+        name: 'filter_path'
+      }
+    }
+  });
+});
+var namespace = require('../client_action').namespaceFactory;
+var api = module.exports = {};
+
+api._namespaces = ['cat', 'cluster', 'indices', 'nodes', 'snapshot'];
+
+/**
+ * Perform a [bulk](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-bulk.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.consistency - Explicit write consistency setting for the operation
+ * @param {Boolean} params.refresh - Refresh the index after performing the operation
+ * @param {String} [params.replication=sync] - Explicitely set the replication type
+ * @param {String} params.routing - Specific routing value
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {String} params.type - Default document type for items which don't provide one
+ * @param {String} params.index - Default index for items which don't provide one
+ */
+api.bulk = ca({
+  params: {
+    consistency: {
+      type: 'enum',
+      options: [
+        'one',
+        'quorum',
+        'all'
+      ]
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    replication: {
+      type: 'enum',
+      'default': 'sync',
+      options: [
+        'sync',
+        'async'
+      ]
+    },
+    routing: {
+      type: 'string'
+    },
+    timeout: {
+      type: 'time'
+    },
+    type: {
+      type: 'string'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_bulk',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_bulk',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_bulk'
+    }
+  ],
+  needBody: true,
+  bulkBody: true,
+  method: 'POST'
+});
+
+api.cat = namespace();
+
+/**
+ * Perform a [cat.aliases](http://www.elasticsearch.org/guide/en/elasticsearch/reference/master/cat.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to return
+ */
+api.cat.prototype.aliases = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/aliases/<%=name%>',
+      req: {
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/aliases'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.allocation](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-allocation.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.bytes - The unit in which to display byte values
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information
+ */
+api.cat.prototype.allocation = ca({
+  params: {
+    bytes: {
+      type: 'enum',
+      options: [
+        'b',
+        'k',
+        'm',
+        'g'
+      ]
+    },
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/allocation/<%=nodeId%>',
+      req: {
+        nodeId: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/allocation'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.count](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-count.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
+ */
+api.cat.prototype.count = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/count/<%=index%>',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/count'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.fielddata](http://www.elastic.co/guide/en/elasticsearch/reference/master/cat-fielddata.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.bytes - The unit in which to display byte values
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return the fielddata size
+ */
+api.cat.prototype.fielddata = ca({
+  params: {
+    bytes: {
+      type: 'enum',
+      options: [
+        'b',
+        'k',
+        'm',
+        'g'
+      ]
+    },
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    },
+    fields: {
+      type: 'list'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/fielddata/<%=fields%>',
+      req: {
+        fields: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/fielddata'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.health](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-health.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} [params.ts=true] - Set to false to disable timestamping
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ */
+api.cat.prototype.health = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    ts: {
+      type: 'boolean',
+      'default': true
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  url: {
+    fmt: '/_cat/health'
+  }
+});
+
+/**
+ * Perform a [cat.help](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.help - Return help information
+ */
+api.cat.prototype.help = ca({
+  params: {
+    help: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  url: {
+    fmt: '/_cat'
+  }
+});
+
+/**
+ * Perform a [cat.indices](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-indices.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.bytes - The unit in which to display byte values
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.pri - Set to true to return stats only for primary shards
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
+ */
+api.cat.prototype.indices = ca({
+  params: {
+    bytes: {
+      type: 'enum',
+      options: [
+        'b',
+        'k',
+        'm',
+        'g'
+      ]
+    },
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    pri: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/indices/<%=index%>',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/indices'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.master](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-master.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ */
+api.cat.prototype.master = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  url: {
+    fmt: '/_cat/master'
+  }
+});
+
+/**
+ * Perform a [cat.nodes](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-nodes.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ */
+api.cat.prototype.nodes = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  url: {
+    fmt: '/_cat/nodes'
+  }
+});
+
+/**
+ * Perform a [cat.pendingTasks](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-pending-tasks.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ */
+api.cat.prototype.pendingTasks = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  url: {
+    fmt: '/_cat/pending_tasks'
+  }
+});
+
+/**
+ * Perform a [cat.plugins](http://www.elastic.co/guide/en/elasticsearch/reference/master/cat-plugins.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ */
+api.cat.prototype.plugins = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  url: {
+    fmt: '/_cat/plugins'
+  }
+});
+
+/**
+ * Perform a [cat.recovery](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-recovery.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.bytes - The unit in which to display byte values
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
+ */
+api.cat.prototype.recovery = ca({
+  params: {
+    bytes: {
+      type: 'enum',
+      options: [
+        'b',
+        'k',
+        'm',
+        'g'
+      ]
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/recovery/<%=index%>',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/recovery'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.segments](http://www.elastic.co/guide/en/elasticsearch/reference/master/cat-segments.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
+ */
+api.cat.prototype.segments = ca({
+  params: {
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': true
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/segments/<%=index%>',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/segments'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.shards](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cat-shards.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
+ */
+api.cat.prototype.shards = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cat/shards/<%=index%>',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cat/shards'
+    }
+  ]
+});
+
+/**
+ * Perform a [cat.threadPool](http://www.elastic.co/guide/en/elasticsearch/reference/master/cat-thread-pool.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
+ * @param {Boolean} params.help - Return help information
+ * @param {Boolean} params.v - Verbose mode. Display column headers
+ * @param {Boolean} params.fullId - Enables displaying the complete node ids
+ */
+api.cat.prototype.threadPool = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    h: {
+      type: 'list'
+    },
+    help: {
+      type: 'boolean',
+      'default': false
+    },
+    v: {
+      type: 'boolean',
+      'default': false
+    },
+    fullId: {
+      type: 'boolean',
+      'default': false,
+      name: 'full_id'
+    }
+  },
+  url: {
+    fmt: '/_cat/thread_pool'
+  }
+});
+
+/**
+ * Perform a [clearScroll](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-request-scroll.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.scrollId - A comma-separated list of scroll IDs to clear
+ */
+api.clearScroll = ca({
+  urls: [
+    {
+      fmt: '/_search/scroll/<%=scrollId%>',
+      req: {
+        scrollId: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_search/scroll'
+    }
+  ],
+  method: 'DELETE'
+});
+
+api.cluster = namespace();
+
+/**
+ * Perform a [cluster.getSettings](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-update-settings.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ */
+api.cluster.prototype.getSettings = ca({
+  params: {
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    timeout: {
+      type: 'time'
+    }
+  },
+  url: {
+    fmt: '/_cluster/settings'
+  }
+});
+
+/**
+ * Perform a [cluster.health](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-health.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} [params.level=cluster] - Specify the level of detail for returned information
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Number} params.waitForActiveShards - Wait until the specified number of shards is active
+ * @param {String} params.waitForNodes - Wait until the specified number of nodes is available
+ * @param {Number} params.waitForRelocatingShards - Wait until the specified number of relocating shards is finished
+ * @param {String} params.waitForStatus - Wait until cluster is in a specific state
+ * @param {String} params.index - Limit the information returned to a specific index
+ */
+api.cluster.prototype.health = ca({
+  params: {
+    level: {
+      type: 'enum',
+      'default': 'cluster',
+      options: [
+        'cluster',
+        'indices',
+        'shards'
+      ]
+    },
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    timeout: {
+      type: 'time'
+    },
+    waitForActiveShards: {
+      type: 'number',
+      name: 'wait_for_active_shards'
+    },
+    waitForNodes: {
+      type: 'string',
+      name: 'wait_for_nodes'
+    },
+    waitForRelocatingShards: {
+      type: 'number',
+      name: 'wait_for_relocating_shards'
+    },
+    waitForStatus: {
+      type: 'enum',
+      'default': null,
+      options: [
+        'green',
+        'yellow',
+        'red'
+      ],
+      name: 'wait_for_status'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cluster/health/<%=index%>',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_cluster/health'
+    }
+  ]
+});
+
+/**
+ * Perform a [cluster.pendingTasks](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-pending.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ */
+api.cluster.prototype.pendingTasks = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/_cluster/pending_tasks'
+  }
+});
+
+/**
+ * Perform a [cluster.putSettings](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-update-settings.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ */
+api.cluster.prototype.putSettings = ca({
+  params: {
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    timeout: {
+      type: 'time'
+    }
+  },
+  url: {
+    fmt: '/_cluster/settings'
+  },
+  method: 'PUT'
+});
+
+/**
+ * Perform a [cluster.reroute](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-reroute.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.dryRun - Simulate the operation only and return the resulting state
+ * @param {Boolean} params.explain - Return an explanation of why the commands can or cannot be executed
+ * @param {String, String[], Boolean} params.metric - Limit the information returned to the specified metrics. Defaults to all but metadata
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ */
+api.cluster.prototype.reroute = ca({
+  params: {
+    dryRun: {
+      type: 'boolean',
+      name: 'dry_run'
+    },
+    explain: {
+      type: 'boolean'
+    },
+    metric: {
+      type: 'list',
+      options: [
+        '_all',
+        'blocks',
+        'metadata',
+        'nodes',
+        'routing_table',
+        'master_node',
+        'version'
+      ]
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    timeout: {
+      type: 'time'
+    }
+  },
+  url: {
+    fmt: '/_cluster/reroute'
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [cluster.state](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-state.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ * @param {String, String[], Boolean} params.metric - Limit the information returned to the specified metrics
+ */
+api.cluster.prototype.state = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cluster/state/<%=metric%>/<%=index%>',
+      req: {
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'blocks',
+            'metadata',
+            'nodes',
+            'routing_table',
+            'routing_nodes',
+            'master_node',
+            'version'
+          ]
+        },
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cluster/state/<%=metric%>',
+      req: {
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'blocks',
+            'metadata',
+            'nodes',
+            'routing_table',
+            'routing_nodes',
+            'master_node',
+            'version'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_cluster/state'
+    }
+  ]
+});
+
+/**
+ * Perform a [cluster.stats](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-stats.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
+ */
+api.cluster.prototype.stats = ca({
+  params: {
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cluster/stats/nodes/<%=nodeId%>',
+      req: {
+        nodeId: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cluster/stats'
+    }
+  ]
+});
+
+/**
+ * Perform a [count](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-count.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Number} params.minScore - Include only documents with a specific `_score` value in the result
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {String} params.q - Query in the Lucene query string syntax
+ * @param {String} params.analyzer - The analyzer to use for the query string
+ * @param {Boolean} params.analyzeWildcard - Specify whether wildcard and prefix queries should be analyzed (default: false)
+ * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
+ * @param {String} params.df - The field to use as default where no field prefix is given in the query string
+ * @param {Boolean} params.lenient - Specify whether format-based query failures (such as providing text to a numeric field) should be ignored
+ * @param {Boolean} params.lowercaseExpandedTerms - Specify whether query terms should be lowercased
+ * @param {String, String[], Boolean} params.index - A comma-separated list of indices to restrict the results
+ * @param {String, String[], Boolean} params.type - A comma-separated list of types to restrict the results
+ */
+api.count = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    minScore: {
+      type: 'number',
+      name: 'min_score'
+    },
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    q: {
+      type: 'string'
+    },
+    analyzer: {
+      type: 'string'
+    },
+    analyzeWildcard: {
+      type: 'boolean',
+      name: 'analyze_wildcard'
+    },
+    defaultOperator: {
+      type: 'enum',
+      'default': 'OR',
+      options: [
+        'AND',
+        'OR'
+      ],
+      name: 'default_operator'
+    },
+    df: {
+      type: 'string'
+    },
+    lenient: {
+      type: 'boolean'
+    },
+    lowercaseExpandedTerms: {
+      type: 'boolean',
+      name: 'lowercase_expanded_terms'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_count',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_count',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_count'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [countPercolate](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-percolate.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.percolateIndex - The index to count percolate the document into. Defaults to index.
+ * @param {String} params.percolateType - The type to count percolate document into. Defaults to type.
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.index - The index of the document being count percolated.
+ * @param {String} params.type - The type of the document being count percolated.
+ * @param {String} params.id - Substitute the document in the request body with a document that is known by the specified id. On top of the id, the index and type parameter will be used to retrieve the document from within the cluster.
+ */
+api.countPercolate = ca({
+  params: {
+    routing: {
+      type: 'list'
+    },
+    preference: {
+      type: 'string'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    percolateIndex: {
+      type: 'string',
+      name: 'percolate_index'
+    },
+    percolateType: {
+      type: 'string',
+      name: 'percolate_type'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/<%=id%>/_percolate/count',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        },
+        id: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/<%=type%>/_percolate/count',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [delete](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-delete.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.consistency - Specific write consistency setting for the operation
+ * @param {String} params.parent - ID of parent document
+ * @param {Boolean} params.refresh - Refresh the index after performing the operation
+ * @param {String} [params.replication=sync] - Specific replication type
+ * @param {String} params.routing - Specific routing value
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - The document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api['delete'] = ca({
+  params: {
+    consistency: {
+      type: 'enum',
+      options: [
+        'one',
+        'quorum',
+        'all'
+      ]
+    },
+    parent: {
+      type: 'string'
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    replication: {
+      type: 'enum',
+      'default': 'sync',
+      options: [
+        'sync',
+        'async'
+      ]
+    },
+    routing: {
+      type: 'string'
+    },
+    timeout: {
+      type: 'time'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/<%=id%>',
+    req: {
+      index: {
+        type: 'string'
+      },
+      type: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [deleteByQuery](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-delete-by-query.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.analyzer - The analyzer to use for the query string
+ * @param {String} params.consistency - Specific write consistency setting for the operation
+ * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
+ * @param {String} params.df - The field to use as default where no field prefix is given in the query string
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} [params.replication=sync] - Specific replication type
+ * @param {String} params.q - Query in the Lucene query string syntax
+ * @param {String} params.routing - Specific routing value
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {String, String[], Boolean} params.index - A comma-separated list of indices to restrict the operation; use `_all` to perform the operation on all indices
+ * @param {String, String[], Boolean} params.type - A comma-separated list of types to restrict the operation
+ */
+api.deleteByQuery = ca({
+  params: {
+    analyzer: {
+      type: 'string'
+    },
+    consistency: {
+      type: 'enum',
+      options: [
+        'one',
+        'quorum',
+        'all'
+      ]
+    },
+    defaultOperator: {
+      type: 'enum',
+      'default': 'OR',
+      options: [
+        'AND',
+        'OR'
+      ],
+      name: 'default_operator'
+    },
+    df: {
+      type: 'string'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    replication: {
+      type: 'enum',
+      'default': 'sync',
+      options: [
+        'sync',
+        'async'
+      ]
+    },
+    q: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    timeout: {
+      type: 'time'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_query',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_query',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    }
+  ],
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [deleteScript](http://www.elastic.co/guide/en/elasticsearch/reference/master/modules-scripting.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Script ID
+ * @param {String} params.lang - Script language
+ */
+api.deleteScript = ca({
+  params: {
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/_scripts/<%=lang%>/<%=id%>',
+    req: {
+      lang: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [deleteTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-template.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Template ID
+ */
+api.deleteTemplate = ca({
+  params: {
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/_search/template/<%=id%>',
+    req: {
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [exists](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-get.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.parent - The ID of the parent document
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
+ * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
+ * @param {String} params.routing - Specific routing value
+ * @param {String} params.id - The document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document (use `_all` to fetch the first document matching the ID across all types)
+ */
+api.exists = ca({
+  params: {
+    parent: {
+      type: 'string'
+    },
+    preference: {
+      type: 'string'
+    },
+    realtime: {
+      type: 'boolean'
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    routing: {
+      type: 'string'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/<%=id%>',
+    req: {
+      index: {
+        type: 'string'
+      },
+      type: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'HEAD'
+});
+
+/**
+ * Perform a [explain](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-explain.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.analyzeWildcard - Specify whether wildcards and prefix queries in the query string query should be analyzed (default: false)
+ * @param {String} params.analyzer - The analyzer for the query string query
+ * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
+ * @param {String} params.df - The default field for query string query (default: _all)
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
+ * @param {Boolean} params.lenient - Specify whether format-based query failures (such as providing text to a numeric field) should be ignored
+ * @param {Boolean} params.lowercaseExpandedTerms - Specify whether query terms should be lowercased
+ * @param {String} params.parent - The ID of the parent document
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.q - Query in the Lucene query string syntax
+ * @param {String} params.routing - Specific routing value
+ * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
+ * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
+ * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
+ * @param {String} params.id - The document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.explain = ca({
+  params: {
+    analyzeWildcard: {
+      type: 'boolean',
+      name: 'analyze_wildcard'
+    },
+    analyzer: {
+      type: 'string'
+    },
+    defaultOperator: {
+      type: 'enum',
+      'default': 'OR',
+      options: [
+        'AND',
+        'OR'
+      ],
+      name: 'default_operator'
+    },
+    df: {
+      type: 'string'
+    },
+    fields: {
+      type: 'list'
+    },
+    lenient: {
+      type: 'boolean'
+    },
+    lowercaseExpandedTerms: {
+      type: 'boolean',
+      name: 'lowercase_expanded_terms'
+    },
+    parent: {
+      type: 'string'
+    },
+    preference: {
+      type: 'string'
+    },
+    q: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    _source: {
+      type: 'list'
+    },
+    _sourceExclude: {
+      type: 'list',
+      name: '_source_exclude'
+    },
+    _sourceInclude: {
+      type: 'list',
+      name: '_source_include'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/<%=id%>/_explain',
+    req: {
+      index: {
+        type: 'string'
+      },
+      type: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [fieldStats](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-field-stats.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields for to get field statistics for (min value, max value, and more)
+ * @param {String} [params.level=cluster] - Defines if field stats should be returned on a per index level or on a cluster wide level
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.fieldStats = ca({
+  params: {
+    fields: {
+      type: 'list'
+    },
+    level: {
+      type: 'enum',
+      'default': 'cluster',
+      options: [
+        'indices',
+        'cluster'
+      ]
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_field_stats',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_field_stats'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [get](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-get.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
+ * @param {String} params.parent - The ID of the parent document
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
+ * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
+ * @param {String} params.routing - Specific routing value
+ * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
+ * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
+ * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - The document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document (use `_all` to fetch the first document matching the ID across all types)
+ */
+api.get = ca({
+  params: {
+    fields: {
+      type: 'list'
+    },
+    parent: {
+      type: 'string'
+    },
+    preference: {
+      type: 'string'
+    },
+    realtime: {
+      type: 'boolean'
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    routing: {
+      type: 'string'
+    },
+    _source: {
+      type: 'list'
+    },
+    _sourceExclude: {
+      type: 'list',
+      name: '_source_exclude'
+    },
+    _sourceInclude: {
+      type: 'list',
+      name: '_source_include'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/<%=id%>',
+    req: {
+      index: {
+        type: 'string'
+      },
+      type: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  }
+});
+
+/**
+ * Perform a [getScript](http://www.elastic.co/guide/en/elasticsearch/reference/master/modules-scripting.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Script ID
+ * @param {String} params.lang - Script language
+ */
+api.getScript = ca({
+  params: {
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/_scripts/<%=lang%>/<%=id%>',
+    req: {
+      lang: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  }
+});
+
+/**
+ * Perform a [getSource](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-get.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.parent - The ID of the parent document
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
+ * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
+ * @param {String} params.routing - Specific routing value
+ * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
+ * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
+ * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - The document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document; use `_all` to fetch the first document matching the ID across all types
+ */
+api.getSource = ca({
+  params: {
+    parent: {
+      type: 'string'
+    },
+    preference: {
+      type: 'string'
+    },
+    realtime: {
+      type: 'boolean'
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    routing: {
+      type: 'string'
+    },
+    _source: {
+      type: 'list'
+    },
+    _sourceExclude: {
+      type: 'list',
+      name: '_source_exclude'
+    },
+    _sourceInclude: {
+      type: 'list',
+      name: '_source_include'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/<%=id%>/_source',
+    req: {
+      index: {
+        type: 'string'
+      },
+      type: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  }
+});
+
+/**
+ * Perform a [getTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-template.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Template ID
+ */
+api.getTemplate = ca({
+  params: {
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/_search/template/<%=id%>',
+    req: {
+      id: {
+        type: 'string'
+      }
+    }
+  }
+});
+
+/**
+ * Perform a [index](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-index_.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.consistency - Explicit write consistency setting for the operation
+ * @param {String} params.parent - ID of the parent document
+ * @param {Boolean} params.refresh - Refresh the index after performing the operation
+ * @param {String} [params.replication=sync] - Specific replication type
+ * @param {String} params.routing - Specific routing value
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.timestamp - Explicit timestamp for the document
+ * @param {Duration} params.ttl - Expiration time for the document
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.index = ca({
+  params: {
+    consistency: {
+      type: 'enum',
+      options: [
+        'one',
+        'quorum',
+        'all'
+      ]
+    },
+    opType: {
+      type: 'enum',
+      'default': 'index',
+      options: [
+        'index',
+        'create'
+      ],
+      name: 'op_type'
+    },
+    parent: {
+      type: 'string'
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    replication: {
+      type: 'enum',
+      'default': 'sync',
+      options: [
+        'sync',
+        'async'
+      ]
+    },
+    routing: {
+      type: 'string'
+    },
+    timeout: {
+      type: 'time'
+    },
+    timestamp: {
+      type: 'time'
+    },
+    ttl: {
+      type: 'duration'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/<%=id%>',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        },
+        id: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/<%=type%>',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    }
+  ],
+  needBody: true,
+  method: 'POST'
+});
+
+api.indices = namespace();
+
+/**
+ * Perform a [indices.analyze](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-analyze.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.analyzer - The name of the analyzer to use
+ * @param {String, String[], Boolean} params.charFilters - A comma-separated list of character filters to use for the analysis
+ * @param {String} params.field - Use the analyzer configured for this field (instead of passing the analyzer name)
+ * @param {String, String[], Boolean} params.filters - A comma-separated list of filters to use for the analysis
+ * @param {String} params.index - The name of the index to scope the operation
+ * @param {Boolean} params.preferLocal - With `true`, specify that a local shard should be used if available, with `false`, use a random shard (default: true)
+ * @param {String} params.text - The text on which the analysis should be performed (when request body is not used)
+ * @param {String} params.tokenizer - The name of the tokenizer to use for the analysis
+ * @param {String} [params.format=detailed] - Format of the output
+ */
+api.indices.prototype.analyze = ca({
+  params: {
+    analyzer: {
+      type: 'string'
+    },
+    charFilters: {
+      type: 'list',
+      name: 'char_filters'
+    },
+    field: {
+      type: 'string'
+    },
+    filters: {
+      type: 'list'
+    },
+    index: {
+      type: 'string'
+    },
+    preferLocal: {
+      type: 'boolean',
+      name: 'prefer_local'
+    },
+    text: {
+      type: 'string'
+    },
+    tokenizer: {
+      type: 'string'
+    },
+    format: {
+      type: 'enum',
+      'default': 'detailed',
+      options: [
+        'detailed',
+        'text'
+      ]
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_analyze',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_analyze'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.clearCache](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-clearcache.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.fieldData - Clear field data
+ * @param {Boolean} params.fielddata - Clear field data
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to clear when using the `field_data` parameter (default: all)
+ * @param {Boolean} params.filter - Clear filter caches
+ * @param {Boolean} params.filterCache - Clear filter caches
+ * @param {Boolean} params.filterKeys - A comma-separated list of keys to clear when using the `filter_cache` parameter (default: all)
+ * @param {Boolean} params.id - Clear ID caches for parent/child
+ * @param {Boolean} params.idCache - Clear ID caches for parent/child
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index name to limit the operation
+ * @param {Boolean} params.recycler - Clear the recycler cache
+ * @param {Boolean} params.queryCache - Clear query cache
+ */
+api.indices.prototype.clearCache = ca({
+  params: {
+    fieldData: {
+      type: 'boolean',
+      name: 'field_data'
+    },
+    fielddata: {
+      type: 'boolean'
+    },
+    fields: {
+      type: 'list'
+    },
+    filter: {
+      type: 'boolean'
+    },
+    filterCache: {
+      type: 'boolean',
+      name: 'filter_cache'
+    },
+    filterKeys: {
+      type: 'boolean',
+      name: 'filter_keys'
+    },
+    id: {
+      type: 'boolean'
+    },
+    idCache: {
+      type: 'boolean',
+      name: 'id_cache'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    index: {
+      type: 'list'
+    },
+    recycler: {
+      type: 'boolean'
+    },
+    queryCache: {
+      type: 'boolean',
+      name: 'query_cache'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_cache/clear',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_cache/clear'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.close](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-open-close.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The name of the index
+ */
+api.indices.prototype.close = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/_close',
+    req: {
+      index: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.create](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-create-index.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {String} params.index - The name of the index
+ */
+api.indices.prototype.create = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>',
+    req: {
+      index: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.delete](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-delete-index.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {String, String[], Boolean} params.index - A comma-separated list of indices to delete; use `_all` or `*` string to delete all indices
+ */
+api.indices.prototype['delete'] = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>',
+    req: {
+      index: {
+        type: 'list'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [indices.deleteAlias](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-aliases.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit timestamp for the document
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names (supports wildcards); use `_all` for all indices
+ * @param {String, String[], Boolean} params.name - A comma-separated list of aliases to delete (supports wildcards); use `_all` to delete all aliases for the specified indices.
+ */
+api.indices.prototype.deleteAlias = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/_alias/<%=name%>',
+    req: {
+      index: {
+        type: 'list'
+      },
+      name: {
+        type: 'list'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [indices.deleteMapping](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-delete-mapping.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names (supports wildcards); use `_all` for all indices
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to delete (supports wildcards); use `_all` to delete all document types in the specified indices.
+ */
+api.indices.prototype.deleteMapping = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/_mapping',
+    req: {
+      index: {
+        type: 'list'
+      },
+      type: {
+        type: 'list'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [indices.deleteTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-templates.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {String} params.name - The name of the template
+ */
+api.indices.prototype.deleteTemplate = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/_template/<%=name%>',
+    req: {
+      name: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [indices.deleteWarmer](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-warmers.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {String, String[], Boolean} params.name - A comma-separated list of warmer names to delete (supports wildcards); use `_all` to delete all warmers in the specified indices. You must specify a name either in the uri or in the parameters.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to delete warmers from (supports wildcards); use `_all` to perform the operation on all indices.
+ */
+api.indices.prototype.deleteWarmer = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    name: {
+      type: 'list'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/_warmer/<%=name%>',
+    req: {
+      index: {
+        type: 'list'
+      },
+      name: {
+        type: 'list'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [indices.exists](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-exists.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of indices to check
+ */
+api.indices.prototype.exists = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>',
+    req: {
+      index: {
+        type: 'list'
+      }
+    }
+  },
+  method: 'HEAD'
+});
+
+/**
+ * Perform a [indices.existsAlias](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-aliases.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open,closed] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to filter aliases
+ * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to return
+ */
+api.indices.prototype.existsAlias = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': [
+        'open',
+        'closed'
+      ],
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_alias/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_alias/<%=name%>',
+      req: {
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_alias',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    }
+  ],
+  method: 'HEAD'
+});
+
+/**
+ * Perform a [indices.existsTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-templates.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String} params.name - The name of the template
+ */
+api.indices.prototype.existsTemplate = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  url: {
+    fmt: '/_template/<%=name%>',
+    req: {
+      name: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'HEAD'
+});
+
+/**
+ * Perform a [indices.existsType](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-types-exists.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` to check the types across all indices
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to check
+ */
+api.indices.prototype.existsType = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>',
+    req: {
+      index: {
+        type: 'list'
+      },
+      type: {
+        type: 'list'
+      }
+    }
+  },
+  method: 'HEAD'
+});
+
+/**
+ * Perform a [indices.flush](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-flush.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.force - Whether a flush should be forced even if it is not necessarily needed ie. if no changes will be committed to the index. This is useful if transaction log IDs should be incremented even if no uncommitted changes are present. (This setting can be considered as internal)
+ * @param {Boolean} params.waitIfOngoing - If set to true the flush operation will block until the flush can be executed if another flush operation is already executing. The default is false and will cause an exception to be thrown on the shard level if another flush operation is already running.
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string for all indices
+ */
+api.indices.prototype.flush = ca({
+  params: {
+    force: {
+      type: 'boolean'
+    },
+    waitIfOngoing: {
+      type: 'boolean',
+      name: 'wait_if_ongoing'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_flush',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_flush'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.flushSynced](http://www.elastic.co/guide/en/elasticsearch/reference/master/indices-flush.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string for all indices
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ */
+api.indices.prototype.flushSynced = ca({
+  urls: [
+    {
+      fmt: '/<%=index%>/_flush/synced',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_flush/synced'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.get](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-get-index.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Boolean} params.ignoreUnavailable - Ignore unavailable indexes (default: false)
+ * @param {Boolean} params.allowNoIndices - Ignore if a wildcard expression resolves to no concrete indices (default: false)
+ * @param {String} [params.expandWildcards=open] - Whether wildcard expressions should get expanded to open or closed indices (default: open)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names
+ * @param {String, String[], Boolean} params.feature - A comma-separated list of features
+ */
+api.indices.prototype.get = ca({
+  params: {
+    local: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=feature%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        feature: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getAlias](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-aliases.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to filter aliases
+ * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to return
+ */
+api.indices.prototype.getAlias = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_alias/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_alias/<%=name%>',
+      req: {
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_alias',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_alias'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getAliases](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-aliases.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to filter aliases
+ * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to filter
+ */
+api.indices.prototype.getAliases = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_aliases/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_aliases',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_aliases/<%=name%>',
+      req: {
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_aliases'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getFieldMapping](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-get-field-mapping.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.includeDefaults - Whether the default mapping values should be returned as well
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types
+ * @param {String, String[], Boolean} params.field - A comma-separated list of fields
+ */
+api.indices.prototype.getFieldMapping = ca({
+  params: {
+    includeDefaults: {
+      type: 'boolean',
+      name: 'include_defaults'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_mapping/<%=type%>/field/<%=field%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        },
+        field: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_mapping/field/<%=field%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        field: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_mapping/<%=type%>/field/<%=field%>',
+      req: {
+        type: {
+          type: 'list'
+        },
+        field: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_mapping/field/<%=field%>',
+      req: {
+        field: {
+          type: 'list'
+        }
+      }
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getMapping](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-get-mapping.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types
+ */
+api.indices.prototype.getMapping = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_mapping/<%=type%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_mapping',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_mapping/<%=type%>',
+      req: {
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_mapping'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getSettings](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-get-settings.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open,closed] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ * @param {String, String[], Boolean} params.name - The name of the settings that should be included
+ */
+api.indices.prototype.getSettings = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': [
+        'open',
+        'closed'
+      ],
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_settings/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_settings',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_settings/<%=name%>',
+      req: {
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_settings'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-templates.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String} params.name - The name of the template
+ */
+api.indices.prototype.getTemplate = ca({
+  params: {
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_template/<%=name%>',
+      req: {
+        name: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_template'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getUpgrade](http://www.elastic.co/guide/en/elasticsearch/reference/master/indices-upgrade.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.getUpgrade = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_upgrade',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_upgrade'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.getWarmer](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-warmers.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to restrict the operation; use `_all` to perform the operation on all indices
+ * @param {String, String[], Boolean} params.name - The name of the warmer (supports wildcards); leave empty to get all warmers
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to restrict the operation; leave empty to perform the operation on all types
+ */
+api.indices.prototype.getWarmer = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_warmer/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        },
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_warmer/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_warmer',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_warmer/<%=name%>',
+      req: {
+        name: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_warmer'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.open](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-open-close.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=closed] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The name of the index
+ */
+api.indices.prototype.open = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'closed',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/_open',
+    req: {
+      index: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.optimize](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-optimize.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.flush - Specify whether the index should be flushed after performing the operation (default: true)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Number} params.maxNumSegments - The number of segments the index should be merged into (default: dynamic)
+ * @param {Boolean} params.onlyExpungeDeletes - Specify whether the operation should only expunge deleted documents
+ * @param {Anything} params.operationThreading - TODO: ?
+ * @param {Boolean} params.waitForMerge - Specify whether the request should block until the merge process is finished (default: true)
+ * @param {Boolean} params.force - Force a merge operation to run, even if there is a single segment in the index (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.optimize = ca({
+  params: {
+    flush: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    maxNumSegments: {
+      type: 'number',
+      name: 'max_num_segments'
+    },
+    onlyExpungeDeletes: {
+      type: 'boolean',
+      name: 'only_expunge_deletes'
+    },
+    operationThreading: {
+      name: 'operation_threading'
+    },
+    waitForMerge: {
+      type: 'boolean',
+      name: 'wait_for_merge'
+    },
+    force: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_optimize',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_optimize'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.putAlias](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-aliases.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Explicit timestamp for the document
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names the alias should point to (supports wildcards); use `_all` to perform the operation on all indices.
+ * @param {String} params.name - The name of the alias to be created or updated
+ */
+api.indices.prototype.putAlias = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/_alias/<%=name%>',
+    req: {
+      index: {
+        type: 'list'
+      },
+      name: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'PUT'
+});
+
+/**
+ * Perform a [indices.putMapping](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-put-mapping.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreConflicts - Specify whether to ignore conflicts while updating the mapping (default: false)
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names the mapping should be added to (supports wildcards); use `_all` or omit to add the mapping on all indices.
+ * @param {String} params.type - The name of the document type
+ */
+api.indices.prototype.putMapping = ca({
+  params: {
+    ignoreConflicts: {
+      type: 'boolean',
+      name: 'ignore_conflicts'
+    },
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_mapping/<%=type%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_mapping/<%=type%>',
+      req: {
+        type: {
+          type: 'string'
+        }
+      }
+    }
+  ],
+  needBody: true,
+  method: 'PUT'
+});
+
+/**
+ * Perform a [indices.putSettings](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-update-settings.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.putSettings = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_settings',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_settings'
+    }
+  ],
+  needBody: true,
+  method: 'PUT'
+});
+
+/**
+ * Perform a [indices.putTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-templates.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Number} params.order - The order for this template when merging multiple matching ones (higher numbers are merged later, overriding the lower numbers)
+ * @param {Boolean} params.create - Whether the index template should only be added if new or can also replace an existing one
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {String} params.name - The name of the template
+ */
+api.indices.prototype.putTemplate = ca({
+  params: {
+    order: {
+      type: 'number'
+    },
+    create: {
+      type: 'boolean',
+      'default': false
+    },
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    }
+  },
+  url: {
+    fmt: '/_template/<%=name%>',
+    req: {
+      name: {
+        type: 'string'
+      }
+    }
+  },
+  needBody: true,
+  method: 'PUT'
+});
+
+/**
+ * Perform a [indices.putWarmer](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-warmers.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed) in the search request to warm
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices in the search request to warm. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both, in the search request to warm.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to register the warmer for; use `_all` or omit to perform the operation on all indices
+ * @param {String} params.name - The name of the warmer
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to register the warmer for; leave empty to perform the operation on all types
+ */
+api.indices.prototype.putWarmer = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_warmer/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        },
+        name: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_warmer/<%=name%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        name: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_warmer/<%=name%>',
+      req: {
+        name: {
+          type: 'string'
+        }
+      }
+    }
+  ],
+  needBody: true,
+  method: 'PUT'
+});
+
+/**
+ * Perform a [indices.recovery](http://www.elastic.co/guide/en/elasticsearch/reference/master/indices-recovery.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.detailed - Whether to display detailed information about shard recovery
+ * @param {Boolean} params.activeOnly - Display only those recoveries that are currently on-going
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.recovery = ca({
+  params: {
+    detailed: {
+      type: 'boolean',
+      'default': false
+    },
+    activeOnly: {
+      type: 'boolean',
+      'default': false,
+      name: 'active_only'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_recovery',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_recovery'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.refresh](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-refresh.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.force - Force a refresh even if not required
+ * @param {Anything} params.operationThreading - TODO: ?
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.refresh = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    force: {
+      type: 'boolean',
+      'default': false
+    },
+    operationThreading: {
+      name: 'operation_threading'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_refresh',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_refresh'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.segments](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-segments.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {Anything} params.operationThreading - TODO: ?
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.segments = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    },
+    operationThreading: {
+      name: 'operation_threading'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_segments',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_segments'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.stats](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-stats.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.completionFields - A comma-separated list of fields for `fielddata` and `suggest` index metric (supports wildcards)
+ * @param {String, String[], Boolean} params.fielddataFields - A comma-separated list of fields for `fielddata` index metric (supports wildcards)
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields for `fielddata` and `completion` index metric (supports wildcards)
+ * @param {String, String[], Boolean} params.groups - A comma-separated list of search groups for `search` index metric
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {String} [params.level=indices] - Return stats aggregated at cluster, index or shard level
+ * @param {String, String[], Boolean} params.types - A comma-separated list of document types for the `indexing` index metric
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ * @param {String, String[], Boolean} params.metric - Limit the information returned the specific metrics.
+ */
+api.indices.prototype.stats = ca({
+  params: {
+    completionFields: {
+      type: 'list',
+      name: 'completion_fields'
+    },
+    fielddataFields: {
+      type: 'list',
+      name: 'fielddata_fields'
+    },
+    fields: {
+      type: 'list'
+    },
+    groups: {
+      type: 'list'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    },
+    level: {
+      type: 'enum',
+      'default': 'indices',
+      options: [
+        'cluster',
+        'indices',
+        'shards'
+      ]
+    },
+    types: {
+      type: 'list'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_stats/<%=metric%>',
+      req: {
+        index: {
+          type: 'list'
+        },
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'completion',
+            'docs',
+            'fielddata',
+            'filter_cache',
+            'flush',
+            'get',
+            'id_cache',
+            'indexing',
+            'merge',
+            'percolate',
+            'query_cache',
+            'refresh',
+            'search',
+            'segments',
+            'store',
+            'warmer',
+            'suggest'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_stats/<%=metric%>',
+      req: {
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'completion',
+            'docs',
+            'fielddata',
+            'filter_cache',
+            'flush',
+            'get',
+            'id_cache',
+            'indexing',
+            'merge',
+            'percolate',
+            'query_cache',
+            'refresh',
+            'search',
+            'segments',
+            'store',
+            'warmer',
+            'suggest'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_stats',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_stats'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.status](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-status.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {Anything} params.operationThreading - TODO: ?
+ * @param {Boolean} params.recovery - Return information about shard recovery
+ * @param {Boolean} params.snapshot - TODO: ?
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.status = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    },
+    operationThreading: {
+      name: 'operation_threading'
+    },
+    recovery: {
+      type: 'boolean'
+    },
+    snapshot: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_status',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_status'
+    }
+  ]
+});
+
+/**
+ * Perform a [indices.updateAliases](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/indices-aliases.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.timeout - Request timeout
+ * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ */
+api.indices.prototype.updateAliases = ca({
+  params: {
+    timeout: {
+      type: 'time'
+    },
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/_aliases'
+  },
+  needBody: true,
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.upgrade](http://www.elastic.co/guide/en/elasticsearch/reference/master/indices-upgrade.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.waitForCompletion - Specify whether the request should block until the all segments are upgraded (default: true)
+ * @param {Boolean} params.onlyAncientSegments - If true, only ancient (an older Lucene major release) segments will be upgraded
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
+ */
+api.indices.prototype.upgrade = ca({
+  params: {
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    waitForCompletion: {
+      type: 'boolean',
+      name: 'wait_for_completion'
+    },
+    onlyAncientSegments: {
+      type: 'boolean',
+      name: 'only_ancient_segments'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_upgrade',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_upgrade'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [indices.validateQuery](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-validate.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.explain - Return detailed information about the error
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Anything} params.operationThreading - TODO: ?
+ * @param {String} params.q - Query in the Lucene query string syntax
+ * @param {String} params.analyzer - The analyzer to use for the query string
+ * @param {Boolean} params.analyzeWildcard - Specify whether wildcard and prefix queries should be analyzed (default: false)
+ * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
+ * @param {String} params.df - The field to use as default where no field prefix is given in the query string
+ * @param {Boolean} params.lenient - Specify whether format-based query failures (such as providing text to a numeric field) should be ignored
+ * @param {Boolean} params.lowercaseExpandedTerms - Specify whether query terms should be lowercased
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to restrict the operation; use `_all` or empty string to perform the operation on all indices
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to restrict the operation; leave empty to perform the operation on all types
+ */
+api.indices.prototype.validateQuery = ca({
+  params: {
+    explain: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    operationThreading: {
+      name: 'operation_threading'
+    },
+    q: {
+      type: 'string'
+    },
+    analyzer: {
+      type: 'string'
+    },
+    analyzeWildcard: {
+      type: 'boolean',
+      name: 'analyze_wildcard'
+    },
+    defaultOperator: {
+      type: 'enum',
+      'default': 'OR',
+      options: [
+        'AND',
+        'OR'
+      ],
+      name: 'default_operator'
+    },
+    df: {
+      type: 'string'
+    },
+    lenient: {
+      type: 'boolean'
+    },
+    lowercaseExpandedTerms: {
+      type: 'boolean',
+      name: 'lowercase_expanded_terms'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_validate/query',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_validate/query',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_validate/query'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [info](http://www.elastic.co/guide/) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ */
+api.info = ca({
+  url: {
+    fmt: '/'
+  }
+});
+
+/**
+ * Perform a [mget](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-multi-get.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {Boolean} params.realtime - Specify whether to perform the operation in realtime or search mode
+ * @param {Boolean} params.refresh - Refresh the shard containing the document before performing the operation
+ * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
+ * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
+ * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.mget = ca({
+  params: {
+    fields: {
+      type: 'list'
+    },
+    preference: {
+      type: 'string'
+    },
+    realtime: {
+      type: 'boolean'
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    _source: {
+      type: 'list'
+    },
+    _sourceExclude: {
+      type: 'list',
+      name: '_source_exclude'
+    },
+    _sourceInclude: {
+      type: 'list',
+      name: '_source_include'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_mget',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_mget',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_mget'
+    }
+  ],
+  needBody: true,
+  method: 'POST'
+});
+
+/**
+ * Perform a [mlt](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-more-like-this.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Number} params.boostTerms - The boost factor
+ * @param {Number} params.maxDocFreq - The word occurrence frequency as count: words with higher occurrence in the corpus will be ignored
+ * @param {Number} params.maxQueryTerms - The maximum query terms to be included in the generated query
+ * @param {Number} params.maxWordLength - The minimum length of the word: longer words will be ignored
+ * @param {Number} params.minDocFreq - The word occurrence frequency as count: words with lower occurrence in the corpus will be ignored
+ * @param {Number} params.minTermFreq - The term frequency as percent: terms with lower occurence in the source document will be ignored
+ * @param {Number} params.minWordLength - The minimum length of the word: shorter words will be ignored
+ * @param {String, String[], Boolean} params.mltFields - Specific fields to perform the query against
+ * @param {Number} params.percentTermsToMatch - How many terms have to match in order to consider the document a match (default: 0.3)
+ * @param {String} params.routing - Specific routing value
+ * @param {Number} params.searchFrom - The offset from which to return results
+ * @param {String, String[], Boolean} params.searchIndices - A comma-separated list of indices to perform the query against (default: the index containing the document)
+ * @param {String} params.searchScroll - A scroll search request definition
+ * @param {Number} params.searchSize - The number of documents to return (default: 10)
+ * @param {String} params.searchSource - A specific search request definition (instead of using the request body)
+ * @param {String} params.searchType - Specific search type (eg. `dfs_then_fetch`, `count`, etc)
+ * @param {String, String[], Boolean} params.searchTypes - A comma-separated list of types to perform the query against (default: the same type as the document)
+ * @param {String, String[], Boolean} params.stopWords - A list of stop words to be ignored
+ * @param {String} params.id - The document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document (use `_all` to fetch the first document matching the ID across all types)
+ */
+api.mlt = ca({
+  params: {
+    boostTerms: {
+      type: 'number',
+      name: 'boost_terms'
+    },
+    maxDocFreq: {
+      type: 'number',
+      name: 'max_doc_freq'
+    },
+    maxQueryTerms: {
+      type: 'number',
+      name: 'max_query_terms'
+    },
+    maxWordLength: {
+      type: 'number',
+      name: 'max_word_length'
+    },
+    minDocFreq: {
+      type: 'number',
+      name: 'min_doc_freq'
+    },
+    minTermFreq: {
+      type: 'number',
+      name: 'min_term_freq'
+    },
+    minWordLength: {
+      type: 'number',
+      name: 'min_word_length'
+    },
+    mltFields: {
+      type: 'list',
+      name: 'mlt_fields'
+    },
+    percentTermsToMatch: {
+      type: 'number',
+      name: 'percent_terms_to_match'
+    },
+    routing: {
+      type: 'string'
+    },
+    searchFrom: {
+      type: 'number',
+      name: 'search_from'
+    },
+    searchIndices: {
+      type: 'list',
+      name: 'search_indices'
+    },
+    searchScroll: {
+      type: 'string',
+      name: 'search_scroll'
+    },
+    searchSize: {
+      type: 'number',
+      name: 'search_size'
+    },
+    searchSource: {
+      type: 'string',
+      name: 'search_source'
+    },
+    searchType: {
+      type: 'string',
+      name: 'search_type'
+    },
+    searchTypes: {
+      type: 'list',
+      name: 'search_types'
+    },
+    stopWords: {
+      type: 'list',
+      name: 'stop_words'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/<%=id%>/_mlt',
+    req: {
+      index: {
+        type: 'string'
+      },
+      type: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [mpercolate](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-percolate.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The index of the document being count percolated to use as default
+ * @param {String} params.type - The type of the document being percolated to use as default.
+ */
+api.mpercolate = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_mpercolate',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_mpercolate',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_mpercolate'
+    }
+  ],
+  needBody: true,
+  bulkBody: true,
+  method: 'POST'
+});
+
+/**
+ * Perform a [msearch](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-multi-search.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.searchType - Search operation type
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to use as default
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to use as default
+ */
+api.msearch = ca({
+  params: {
+    searchType: {
+      type: 'enum',
+      options: [
+        'query_then_fetch',
+        'query_and_fetch',
+        'dfs_query_then_fetch',
+        'dfs_query_and_fetch',
+        'count',
+        'scan'
+      ],
+      name: 'search_type'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_msearch',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_msearch',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_msearch'
+    }
+  ],
+  needBody: true,
+  bulkBody: true,
+  method: 'POST'
+});
+
+/**
+ * Perform a [mtermvectors](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-multi-termvectors.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.ids - A comma-separated list of documents ids. You must define ids as parameter or set "ids" or "docs" in the request body
+ * @param {Boolean} params.termStatistics - Specifies if total term frequency and document frequency should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {Boolean} [params.fieldStatistics=true] - Specifies if document count, sum of document frequencies and sum of total term frequencies should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {Boolean} [params.offsets=true] - Specifies if term offsets should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {Boolean} [params.positions=true] - Specifies if term positions should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {Boolean} [params.payloads=true] - Specifies if term payloads should be returned. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random) .Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {String} params.routing - Specific routing value. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {String} params.parent - Parent id of documents. Applies to all returned documents unless otherwise specified in body "params" or "docs".
+ * @param {Boolean} params.realtime - Specifies if requests are real-time as opposed to near-real-time (default: true).
+ * @param {String} params.index - The index in which the document resides.
+ * @param {String} params.type - The type of the document.
+ * @param {String} params.id - The id of the document.
+ */
+api.mtermvectors = ca({
+  params: {
+    ids: {
+      type: 'list',
+      required: false
+    },
+    termStatistics: {
+      type: 'boolean',
+      'default': false,
+      required: false,
+      name: 'term_statistics'
+    },
+    fieldStatistics: {
+      type: 'boolean',
+      'default': true,
+      required: false,
+      name: 'field_statistics'
+    },
+    fields: {
+      type: 'list',
+      required: false
+    },
+    offsets: {
+      type: 'boolean',
+      'default': true,
+      required: false
+    },
+    positions: {
+      type: 'boolean',
+      'default': true,
+      required: false
+    },
+    payloads: {
+      type: 'boolean',
+      'default': true,
+      required: false
+    },
+    preference: {
+      type: 'string',
+      required: false
+    },
+    routing: {
+      type: 'string',
+      required: false
+    },
+    parent: {
+      type: 'string',
+      required: false
+    },
+    realtime: {
+      type: 'boolean',
+      required: false
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_mtermvectors',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_mtermvectors',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_mtermvectors'
+    }
+  ],
+  method: 'POST'
+});
+
+api.nodes = namespace();
+
+/**
+ * Perform a [nodes.hotThreads](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-nodes-hot-threads.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.interval - The interval for the second sampling of threads
+ * @param {Number} params.snapshots - Number of samples of thread stacktrace (default: 10)
+ * @param {Number} params.threads - Specify the number of threads to provide information for (default: 3)
+ * @param {Boolean} params.ignoreIdleThreads - Don't show threads that are in known-idle places, such as waiting on a socket select or pulling from an empty task queue (default: true)
+ * @param {String} params.type - The type to sample (default: cpu)
+ * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
+ */
+api.nodes.prototype.hotThreads = ca({
+  params: {
+    interval: {
+      type: 'time'
+    },
+    snapshots: {
+      type: 'number'
+    },
+    threads: {
+      type: 'number'
+    },
+    ignoreIdleThreads: {
+      type: 'boolean',
+      name: 'ignore_idle_threads'
+    },
+    type: {
+      type: 'enum',
+      options: [
+        'cpu',
+        'wait',
+        'block'
+      ]
+    }
+  },
+  urls: [
+    {
+      fmt: '/_nodes/<%=nodeId%>/hotthreads',
+      req: {
+        nodeId: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/hotthreads'
+    }
+  ]
+});
+
+/**
+ * Perform a [nodes.info](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-nodes-info.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.flatSettings - Return settings in flat format (default: false)
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
+ * @param {String, String[], Boolean} params.metric - A comma-separated list of metrics you wish returned. Leave empty to return all.
+ */
+api.nodes.prototype.info = ca({
+  params: {
+    flatSettings: {
+      type: 'boolean',
+      name: 'flat_settings'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    }
+  },
+  urls: [
+    {
+      fmt: '/_nodes/<%=nodeId%>/<%=metric%>',
+      req: {
+        nodeId: {
+          type: 'list'
+        },
+        metric: {
+          type: 'list',
+          options: [
+            'settings',
+            'os',
+            'process',
+            'jvm',
+            'thread_pool',
+            'network',
+            'transport',
+            'http',
+            'plugins'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/<%=nodeId%>',
+      req: {
+        nodeId: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/<%=metric%>',
+      req: {
+        metric: {
+          type: 'list',
+          options: [
+            'settings',
+            'os',
+            'process',
+            'jvm',
+            'thread_pool',
+            'network',
+            'transport',
+            'http',
+            'plugins'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_nodes'
+    }
+  ]
+});
+
+/**
+ * Perform a [nodes.shutdown](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-nodes-shutdown.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.delay - Set the delay for the operation (default: 1s)
+ * @param {Boolean} params.exit - Exit the JVM as well (default: true)
+ * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to perform the operation on; use `_local` to perform the operation on the node you're connected to, leave empty to perform the operation on all nodes
+ */
+api.nodes.prototype.shutdown = ca({
+  params: {
+    delay: {
+      type: 'time'
+    },
+    exit: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_cluster/nodes/<%=nodeId%>/_shutdown',
+      req: {
+        nodeId: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_shutdown'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [nodes.stats](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/cluster-nodes-stats.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.completionFields - A comma-separated list of fields for `fielddata` and `suggest` index metric (supports wildcards)
+ * @param {String, String[], Boolean} params.fielddataFields - A comma-separated list of fields for `fielddata` index metric (supports wildcards)
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields for `fielddata` and `completion` index metric (supports wildcards)
+ * @param {Boolean} params.groups - A comma-separated list of search groups for `search` index metric
+ * @param {Boolean} params.human - Whether to return time and byte values in human-readable format.
+ * @param {String} [params.level=node] - Return indices stats aggregated at node, index or shard level
+ * @param {String, String[], Boolean} params.types - A comma-separated list of document types for the `indexing` index metric
+ * @param {String, String[], Boolean} params.metric - Limit the information returned to the specified metrics
+ * @param {String, String[], Boolean} params.indexMetric - Limit the information returned for `indices` metric to the specific index metrics. Isn't used if `indices` (or `all`) metric isn't specified.
+ * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information; use `_local` to return information from the node you're connecting to, leave empty to get information from all nodes
+ */
+api.nodes.prototype.stats = ca({
+  params: {
+    completionFields: {
+      type: 'list',
+      name: 'completion_fields'
+    },
+    fielddataFields: {
+      type: 'list',
+      name: 'fielddata_fields'
+    },
+    fields: {
+      type: 'list'
+    },
+    groups: {
+      type: 'boolean'
+    },
+    human: {
+      type: 'boolean',
+      'default': false
+    },
+    level: {
+      type: 'enum',
+      'default': 'node',
+      options: [
+        'node',
+        'indices',
+        'shards'
+      ]
+    },
+    types: {
+      type: 'list'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_nodes/<%=nodeId%>/stats/<%=metric%>/<%=indexMetric%>',
+      req: {
+        nodeId: {
+          type: 'list'
+        },
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'breaker',
+            'fs',
+            'http',
+            'indices',
+            'jvm',
+            'network',
+            'os',
+            'process',
+            'thread_pool',
+            'transport'
+          ]
+        },
+        indexMetric: {
+          type: 'list',
+          options: [
+            '_all',
+            'completion',
+            'docs',
+            'fielddata',
+            'filter_cache',
+            'flush',
+            'get',
+            'id_cache',
+            'indexing',
+            'merge',
+            'percolate',
+            'query_cache',
+            'refresh',
+            'search',
+            'segments',
+            'store',
+            'warmer',
+            'suggest'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/<%=nodeId%>/stats/<%=metric%>',
+      req: {
+        nodeId: {
+          type: 'list'
+        },
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'breaker',
+            'fs',
+            'http',
+            'indices',
+            'jvm',
+            'network',
+            'os',
+            'process',
+            'thread_pool',
+            'transport'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/stats/<%=metric%>/<%=indexMetric%>',
+      req: {
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'breaker',
+            'fs',
+            'http',
+            'indices',
+            'jvm',
+            'network',
+            'os',
+            'process',
+            'thread_pool',
+            'transport'
+          ]
+        },
+        indexMetric: {
+          type: 'list',
+          options: [
+            '_all',
+            'completion',
+            'docs',
+            'fielddata',
+            'filter_cache',
+            'flush',
+            'get',
+            'id_cache',
+            'indexing',
+            'merge',
+            'percolate',
+            'query_cache',
+            'refresh',
+            'search',
+            'segments',
+            'store',
+            'warmer',
+            'suggest'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/<%=nodeId%>/stats',
+      req: {
+        nodeId: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/stats/<%=metric%>',
+      req: {
+        metric: {
+          type: 'list',
+          options: [
+            '_all',
+            'breaker',
+            'fs',
+            'http',
+            'indices',
+            'jvm',
+            'network',
+            'os',
+            'process',
+            'thread_pool',
+            'transport'
+          ]
+        }
+      }
+    },
+    {
+      fmt: '/_nodes/stats'
+    }
+  ]
+});
+
+/**
+ * Perform a [percolate](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-percolate.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.percolateFormat - Return an array of matching query IDs instead of objects
+ * @param {String} params.percolateIndex - The index to percolate the document into. Defaults to index.
+ * @param {String} params.percolateType - The type to percolate document into. Defaults to type.
+ * @param {String} params.percolateRouting - The routing value to use when percolating the existing document.
+ * @param {String} params.percolatePreference - Which shard to prefer when executing the percolate request.
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.index - The index of the document being percolated.
+ * @param {String} params.type - The type of the document being percolated.
+ * @param {String} params.id - Substitute the document in the request body with a document that is known by the specified id. On top of the id, the index and type parameter will be used to retrieve the document from within the cluster.
+ */
+api.percolate = ca({
+  params: {
+    routing: {
+      type: 'list'
+    },
+    preference: {
+      type: 'string'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    percolateFormat: {
+      type: 'enum',
+      options: [
+        'ids'
+      ],
+      name: 'percolate_format'
+    },
+    percolateIndex: {
+      type: 'string',
+      name: 'percolate_index'
+    },
+    percolateType: {
+      type: 'string',
+      name: 'percolate_type'
+    },
+    percolateRouting: {
+      type: 'string',
+      name: 'percolate_routing'
+    },
+    percolatePreference: {
+      type: 'string',
+      name: 'percolate_preference'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/<%=id%>/_percolate',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        },
+        id: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/<%=type%>/_percolate',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [ping](http://www.elastic.co/guide/) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ */
+api.ping = ca({
+  url: {
+    fmt: '/'
+  },
+  requestTimeout: 3000,
+  method: 'HEAD'
+});
+
+/**
+ * Perform a [putScript](http://www.elastic.co/guide/en/elasticsearch/reference/master/modules-scripting.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} [params.opType=index] - Explicit operation type
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Script ID
+ * @param {String} params.lang - Script language
+ */
+api.putScript = ca({
+  params: {
+    opType: {
+      type: 'enum',
+      'default': 'index',
+      options: [
+        'index',
+        'create'
+      ],
+      name: 'op_type'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/_scripts/<%=lang%>/<%=id%>',
+    req: {
+      lang: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  needBody: true,
+  method: 'PUT'
+});
+
+/**
+ * Perform a [putTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-template.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} [params.opType=index] - Explicit operation type
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Template ID
+ */
+api.putTemplate = ca({
+  params: {
+    opType: {
+      type: 'enum',
+      'default': 'index',
+      options: [
+        'index',
+        'create'
+      ],
+      name: 'op_type'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'external',
+        'external_gte',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/_search/template/<%=id%>',
+    req: {
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  needBody: true,
+  method: 'PUT'
+});
+
+/**
+ * Perform a [scroll](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-request-scroll.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Duration} params.scroll - Specify how long a consistent view of the index should be maintained for scrolled search
+ * @param {String} params.scrollId - The scroll ID
+ */
+api.scroll = ca({
+  params: {
+    scroll: {
+      type: 'duration'
+    },
+    scrollId: {
+      type: 'string',
+      name: 'scroll_id'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_search/scroll/<%=scrollId%>',
+      req: {
+        scrollId: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_search/scroll'
+    }
+  ],
+  paramAsBody: 'scrollId',
+  method: 'POST'
+});
+
+/**
+ * Perform a [search](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-search.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.analyzer - The analyzer to use for the query string
+ * @param {Boolean} params.analyzeWildcard - Specify whether wildcard and prefix queries should be analyzed (default: false)
+ * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
+ * @param {String} params.df - The field to use as default where no field prefix is given in the query string
+ * @param {Boolean} params.explain - Specify whether to return detailed information about score computation as part of a hit
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return as part of a hit
+ * @param {String, String[], Boolean} params.fielddataFields - A comma-separated list of fields to return as the field data representation of a field for each hit
+ * @param {Number} params.from - Starting offset (default: 0)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.lenient - Specify whether format-based query failures (such as providing text to a numeric field) should be ignored
+ * @param {Boolean} params.lowercaseExpandedTerms - Specify whether query terms should be lowercased
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.q - Query in the Lucene query string syntax
+ * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
+ * @param {Duration} params.scroll - Specify how long a consistent view of the index should be maintained for scrolled search
+ * @param {String} params.searchType - Search operation type
+ * @param {Number} params.size - Number of hits to return (default: 10)
+ * @param {String, String[], Boolean} params.sort - A comma-separated list of <field>:<direction> pairs
+ * @param {String, String[], Boolean} params._source - True or false to return the _source field or not, or a list of fields to return
+ * @param {String, String[], Boolean} params._sourceExclude - A list of fields to exclude from the returned _source field
+ * @param {String, String[], Boolean} params._sourceInclude - A list of fields to extract and return from the _source field
+ * @param {String, String[], Boolean} params.stats - Specific 'tag' of the request for logging and statistical purposes
+ * @param {String} params.suggestField - Specify which field to use for suggestions
+ * @param {String} [params.suggestMode=missing] - Specify suggest mode
+ * @param {Number} params.suggestSize - How many suggestions to return in response
+ * @param {Text} params.suggestText - The source text for which the suggestions should be returned
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Boolean} params.trackScores - Whether to calculate and return scores even if they are not used for sorting
+ * @param {Boolean} params.version - Specify whether to return document version as part of a hit
+ * @param {Boolean} params.queryCache - Specify if query cache should be used for this request or not, defaults to index level setting
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to search; use `_all` or empty string to perform the operation on all indices
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to search; leave empty to perform the operation on all types
+ */
+api.search = ca({
+  params: {
+    analyzer: {
+      type: 'string'
+    },
+    analyzeWildcard: {
+      type: 'boolean',
+      name: 'analyze_wildcard'
+    },
+    defaultOperator: {
+      type: 'enum',
+      'default': 'OR',
+      options: [
+        'AND',
+        'OR'
+      ],
+      name: 'default_operator'
+    },
+    df: {
+      type: 'string'
+    },
+    explain: {
+      type: 'boolean'
+    },
+    fields: {
+      type: 'list'
+    },
+    fielddataFields: {
+      type: 'list',
+      name: 'fielddata_fields'
+    },
+    from: {
+      type: 'number'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    lenient: {
+      type: 'boolean'
+    },
+    lowercaseExpandedTerms: {
+      type: 'boolean',
+      name: 'lowercase_expanded_terms'
+    },
+    preference: {
+      type: 'string'
+    },
+    q: {
+      type: 'string'
+    },
+    routing: {
+      type: 'list'
+    },
+    scroll: {
+      type: 'duration'
+    },
+    searchType: {
+      type: 'enum',
+      options: [
+        'query_then_fetch',
+        'query_and_fetch',
+        'dfs_query_then_fetch',
+        'dfs_query_and_fetch',
+        'count',
+        'scan'
+      ],
+      name: 'search_type'
+    },
+    size: {
+      type: 'number'
+    },
+    sort: {
+      type: 'list'
+    },
+    _source: {
+      type: 'list'
+    },
+    _sourceExclude: {
+      type: 'list',
+      name: '_source_exclude'
+    },
+    _sourceInclude: {
+      type: 'list',
+      name: '_source_include'
+    },
+    stats: {
+      type: 'list'
+    },
+    suggestField: {
+      type: 'string',
+      name: 'suggest_field'
+    },
+    suggestMode: {
+      type: 'enum',
+      'default': 'missing',
+      options: [
+        'missing',
+        'popular',
+        'always'
+      ],
+      name: 'suggest_mode'
+    },
+    suggestSize: {
+      type: 'number',
+      name: 'suggest_size'
+    },
+    suggestText: {
+      type: 'text',
+      name: 'suggest_text'
+    },
+    timeout: {
+      type: 'time'
+    },
+    trackScores: {
+      type: 'boolean',
+      name: 'track_scores'
+    },
+    version: {
+      type: 'boolean'
+    },
+    queryCache: {
+      type: 'boolean',
+      name: 'query_cache'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_search'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [searchExists](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-exists.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Number} params.minScore - Include only documents with a specific `_score` value in the result
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {String} params.q - Query in the Lucene query string syntax
+ * @param {String} params.analyzer - The analyzer to use for the query string
+ * @param {Boolean} params.analyzeWildcard - Specify whether wildcard and prefix queries should be analyzed (default: false)
+ * @param {String} [params.defaultOperator=OR] - The default operator for query string query (AND or OR)
+ * @param {String} params.df - The field to use as default where no field prefix is given in the query string
+ * @param {Boolean} params.lenient - Specify whether format-based query failures (such as providing text to a numeric field) should be ignored
+ * @param {Boolean} params.lowercaseExpandedTerms - Specify whether query terms should be lowercased
+ * @param {String, String[], Boolean} params.index - A comma-separated list of indices to restrict the results
+ * @param {String, String[], Boolean} params.type - A comma-separated list of types to restrict the results
+ */
+api.searchExists = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    minScore: {
+      type: 'number',
+      name: 'min_score'
+    },
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    q: {
+      type: 'string'
+    },
+    analyzer: {
+      type: 'string'
+    },
+    analyzeWildcard: {
+      type: 'boolean',
+      name: 'analyze_wildcard'
+    },
+    defaultOperator: {
+      type: 'enum',
+      'default': 'OR',
+      options: [
+        'AND',
+        'OR'
+      ],
+      name: 'default_operator'
+    },
+    df: {
+      type: 'string'
+    },
+    lenient: {
+      type: 'boolean'
+    },
+    lowercaseExpandedTerms: {
+      type: 'boolean',
+      name: 'lowercase_expanded_terms'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search/exists',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search/exists',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_search/exists'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [searchShards](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-shards.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.searchShards = ca({
+  params: {
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    },
+    local: {
+      type: 'boolean'
+    },
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search_shards',
+      req: {
+        index: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_search_shards'
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [searchTemplate](http://www.elastic.co/guide/en/elasticsearch/reference/current/search-template.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String, String[], Boolean} params.routing - A comma-separated list of specific routing values
+ * @param {Duration} params.scroll - Specify how long a consistent view of the index should be maintained for scrolled search
+ * @param {String} params.searchType - Search operation type
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to search; use `_all` or empty string to perform the operation on all indices
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to search; leave empty to perform the operation on all types
+ */
+api.searchTemplate = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'list'
+    },
+    scroll: {
+      type: 'duration'
+    },
+    searchType: {
+      type: 'enum',
+      options: [
+        'query_then_fetch',
+        'query_and_fetch',
+        'dfs_query_then_fetch',
+        'dfs_query_and_fetch',
+        'count',
+        'scan'
+      ],
+      name: 'search_type'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/_search/template',
+      req: {
+        index: {
+          type: 'list'
+        },
+        type: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/_search/template',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_search/template'
+    }
+  ],
+  method: 'POST'
+});
+
+api.snapshot = namespace();
+
+/**
+ * Perform a [snapshot.create](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Boolean} params.waitForCompletion - Should this request wait until the operation has completed before returning
+ * @param {String} params.repository - A repository name
+ * @param {String} params.snapshot - A snapshot name
+ */
+api.snapshot.prototype.create = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    waitForCompletion: {
+      type: 'boolean',
+      'default': false,
+      name: 'wait_for_completion'
+    }
+  },
+  url: {
+    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_create',
+    req: {
+      repository: {
+        type: 'string'
+      },
+      snapshot: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [snapshot.createRepository](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Boolean} params.verify - Whether to verify the repository after creation
+ * @param {String} params.repository - A repository name
+ */
+api.snapshot.prototype.createRepository = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    timeout: {
+      type: 'time'
+    },
+    verify: {
+      type: 'boolean'
+    }
+  },
+  url: {
+    fmt: '/_snapshot/<%=repository%>',
+    req: {
+      repository: {
+        type: 'string'
+      }
+    }
+  },
+  needBody: true,
+  method: 'POST'
+});
+
+/**
+ * Perform a [snapshot.delete](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String} params.repository - A repository name
+ * @param {String} params.snapshot - A snapshot name
+ */
+api.snapshot.prototype['delete'] = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>',
+    req: {
+      repository: {
+        type: 'string'
+      },
+      snapshot: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [snapshot.deleteRepository](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {String, String[], Boolean} params.repository - A comma-separated list of repository names
+ */
+api.snapshot.prototype.deleteRepository = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    timeout: {
+      type: 'time'
+    }
+  },
+  url: {
+    fmt: '/_snapshot/<%=repository%>',
+    req: {
+      repository: {
+        type: 'list'
+      }
+    }
+  },
+  method: 'DELETE'
+});
+
+/**
+ * Perform a [snapshot.get](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String} params.repository - A repository name
+ * @param {String, String[], Boolean} params.snapshot - A comma-separated list of snapshot names
+ */
+api.snapshot.prototype.get = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  url: {
+    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>',
+    req: {
+      repository: {
+        type: 'string'
+      },
+      snapshot: {
+        type: 'list'
+      }
+    }
+  }
+});
+
+/**
+ * Perform a [snapshot.getRepository](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Boolean} params.local - Return local information, do not retrieve the state from master node (default: false)
+ * @param {String, String[], Boolean} params.repository - A comma-separated list of repository names
+ */
+api.snapshot.prototype.getRepository = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    local: {
+      type: 'boolean'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_snapshot/<%=repository%>',
+      req: {
+        repository: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_snapshot'
+    }
+  ]
+});
+
+/**
+ * Perform a [snapshot.restore](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Boolean} params.waitForCompletion - Should this request wait until the operation has completed before returning
+ * @param {String} params.repository - A repository name
+ * @param {String} params.snapshot - A snapshot name
+ */
+api.snapshot.prototype.restore = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    waitForCompletion: {
+      type: 'boolean',
+      'default': false,
+      name: 'wait_for_completion'
+    }
+  },
+  url: {
+    fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_restore',
+    req: {
+      repository: {
+        type: 'string'
+      },
+      snapshot: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [snapshot.status](http://www.elastic.co/guide/en/elasticsearch/reference/master/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {String} params.repository - A repository name
+ * @param {String, String[], Boolean} params.snapshot - A comma-separated list of snapshot names
+ */
+api.snapshot.prototype.status = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    }
+  },
+  urls: [
+    {
+      fmt: '/_snapshot/<%=repository%>/<%=snapshot%>/_status',
+      req: {
+        repository: {
+          type: 'string'
+        },
+        snapshot: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_snapshot/<%=repository%>/_status',
+      req: {
+        repository: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/_snapshot/_status'
+    }
+  ]
+});
+
+/**
+ * Perform a [snapshot.verifyRepository](http://www.elastic.co/guide/en/elasticsearch/reference/master/modules-snapshots.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {String} params.repository - A repository name
+ */
+api.snapshot.prototype.verifyRepository = ca({
+  params: {
+    masterTimeout: {
+      type: 'time',
+      name: 'master_timeout'
+    },
+    timeout: {
+      type: 'time'
+    }
+  },
+  url: {
+    fmt: '/_snapshot/<%=repository%>/_verify',
+    req: {
+      repository: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [suggest](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/search-suggesters.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
+ * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
+ * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random)
+ * @param {String} params.routing - Specific routing value
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to restrict the operation; use `_all` or empty string to perform the operation on all indices
+ */
+api.suggest = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    },
+    preference: {
+      type: 'string'
+    },
+    routing: {
+      type: 'string'
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/_suggest',
+      req: {
+        index: {
+          type: 'list'
+        }
+      }
+    },
+    {
+      fmt: '/_suggest'
+    }
+  ],
+  needBody: true,
+  method: 'POST'
+});
+
+/**
+ * Perform a [termvector](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-termvectors.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {Boolean} params.termStatistics - Specifies if total term frequency and document frequency should be returned.
+ * @param {Boolean} [params.fieldStatistics=true] - Specifies if document count, sum of document frequencies and sum of total term frequencies should be returned.
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return.
+ * @param {Boolean} [params.offsets=true] - Specifies if term offsets should be returned.
+ * @param {Boolean} [params.positions=true] - Specifies if term positions should be returned.
+ * @param {Boolean} [params.payloads=true] - Specifies if term payloads should be returned.
+ * @param {String} params.preference - Specify the node or shard the operation should be performed on (default: random).
+ * @param {String} params.routing - Specific routing value.
+ * @param {String} params.parent - Parent id of documents.
+ * @param {Boolean} params.realtime - Specifies if request is real-time as opposed to near-real-time (default: true).
+ * @param {String} params.index - The index in which the document resides.
+ * @param {String} params.type - The type of the document.
+ * @param {String} params.id - The id of the document.
+ */
+api.termvector = ca({
+  params: {
+    termStatistics: {
+      type: 'boolean',
+      'default': false,
+      required: false,
+      name: 'term_statistics'
+    },
+    fieldStatistics: {
+      type: 'boolean',
+      'default': true,
+      required: false,
+      name: 'field_statistics'
+    },
+    fields: {
+      type: 'list',
+      required: false
+    },
+    offsets: {
+      type: 'boolean',
+      'default': true,
+      required: false
+    },
+    positions: {
+      type: 'boolean',
+      'default': true,
+      required: false
+    },
+    payloads: {
+      type: 'boolean',
+      'default': true,
+      required: false
+    },
+    preference: {
+      type: 'string',
+      required: false
+    },
+    routing: {
+      type: 'string',
+      required: false
+    },
+    parent: {
+      type: 'string',
+      required: false
+    },
+    realtime: {
+      type: 'boolean',
+      required: false
+    }
+  },
+  urls: [
+    {
+      fmt: '/<%=index%>/<%=type%>/<%=id%>/_termvector',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        },
+        id: {
+          type: 'string'
+        }
+      }
+    },
+    {
+      fmt: '/<%=index%>/<%=type%>/_termvector',
+      req: {
+        index: {
+          type: 'string'
+        },
+        type: {
+          type: 'string'
+        }
+      }
+    }
+  ],
+  method: 'POST'
+});
+
+/**
+ * Perform a [update](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-update.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.consistency - Explicit write consistency setting for the operation
+ * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return in the response
+ * @param {String} params.lang - The script language (default: groovy)
+ * @param {String} params.parent - ID of the parent document. Is is only used for routing and when for the upsert request
+ * @param {Boolean} params.refresh - Refresh the index after performing the operation
+ * @param {String} [params.replication=sync] - Specific replication type
+ * @param {Number} params.retryOnConflict - Specify how many times should the operation be retried when a conflict occurs (default: 0)
+ * @param {String} params.routing - Specific routing value
+ * @param {Anything} params.script - The URL-encoded script definition (instead of using request body)
+ * @param {Anything} params.scriptId - The id of a stored script
+ * @param {Boolean} params.scriptedUpsert - True if the script referenced in script or script_id should be called to perform inserts - defaults to false
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.timestamp - Explicit timestamp for the document
+ * @param {Duration} params.ttl - Expiration time for the document
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.update = ca({
+  params: {
+    consistency: {
+      type: 'enum',
+      options: [
+        'one',
+        'quorum',
+        'all'
+      ]
+    },
+    fields: {
+      type: 'list'
+    },
+    lang: {
+      type: 'string'
+    },
+    parent: {
+      type: 'string'
+    },
+    refresh: {
+      type: 'boolean'
+    },
+    replication: {
+      type: 'enum',
+      'default': 'sync',
+      options: [
+        'sync',
+        'async'
+      ]
+    },
+    retryOnConflict: {
+      type: 'number',
+      name: 'retry_on_conflict'
+    },
+    routing: {
+      type: 'string'
+    },
+    script: {},
+    scriptId: {
+      name: 'script_id'
+    },
+    scriptedUpsert: {
+      type: 'boolean',
+      name: 'scripted_upsert'
+    },
+    timeout: {
+      type: 'time'
+    },
+    timestamp: {
+      type: 'time'
+    },
+    ttl: {
+      type: 'duration'
+    },
+    version: {
+      type: 'number'
+    },
+    versionType: {
+      type: 'enum',
+      options: [
+        'internal',
+        'force'
+      ],
+      name: 'version_type'
+    }
+  },
+  url: {
+    fmt: '/<%=index%>/<%=type%>/<%=id%>/_update',
+    req: {
+      index: {
+        type: 'string'
+      },
+      type: {
+        type: 'string'
+      },
+      id: {
+        type: 'string'
+      }
+    }
+  },
+  method: 'POST'
+});
+
+/**
+ * Perform a [create](http://www.elastic.co/guide/en/elasticsearch/reference/1.x/docs-index_.html) request
+ *
+ * @param {Object} params - An object with parameters used to carry out this action
+ * @param {String} params.consistency - Explicit write consistency setting for the operation
+ * @param {String} params.parent - ID of the parent document
+ * @param {Boolean} params.refresh - Refresh the index after performing the operation
+ * @param {String} [params.replication=sync] - Specific replication type
+ * @param {String} params.routing - Specific routing value
+ * @param {Date, Number} params.timeout - Explicit operation timeout
+ * @param {Date, Number} params.timestamp - Explicit timestamp for the document
+ * @param {Duration} params.ttl - Expiration time for the document
+ * @param {Number} params.version - Explicit version number for concurrency control
+ * @param {String} params.versionType - Specific version type
+ * @param {String} params.id - Document ID
+ * @param {String} params.index - The name of the index
+ * @param {String} params.type - The type of the document
+ */
+api.create = ca.proxy(api.index, {
+  transform: function (params) {
+    params.op_type = 'create';
+  }
+});
+},{"../client_action":22,"../utils":42}],20:[function(require,module,exports){
 module.exports = {
+  '1.6': require('./1_6'),
   '1.5': require('./1_5'),
-  '1.4': require('./1_4'),
-  '1.3': require('./1_3')
+  '1.4': require('./1_4')
 };
 
-},{"./1_3":17,"./1_4":18,"./1_5":19}],21:[function(require,module,exports){
+},{"./1_4":17,"./1_5":18,"./1_6":19}],21:[function(require,module,exports){
 /**
  * A client that makes requests to Elasticsearch via a {{#crossLink "Transport"}}Transport{{/crossLink}}
  *
@@ -41187,7 +42699,7 @@ function Client(config) {
   }
 
 
-  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.5');
+  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.6');
   if (!config.sniffEndpoint && EsApiClient.prototype === Client.apis['0.90']) {
     config.sniffEndpoint = '/_cluster/nodes';
   }
@@ -41225,17 +42737,25 @@ function Client(config) {
 Client.apis = require('./apis');
 },{"./apis":20,"./client":21,"./client_action":22,"./connection":23,"./connection_pool":24,"./connectors":25,"./errors":27,"./host":28,"./log":29,"./logger":30,"./loggers":31,"./nodes_to_host":33,"./selectors":34,"./serializers":38,"./transport":40,"./utils":42}],22:[function(require,module,exports){
 
+var _ = require('./utils');
+
+/**
+ * Constructs a client action factory that uses specific defaults
+ * @type {Function}
+ */
+exports.makeFactoryWithModifier = makeFactoryWithModifier;
+
 /**
  * Constructs a function that can be called to make a request to ES
  * @type {Function}
  */
-exports.factory = factory;
+exports.factory = makeFactoryWithModifier();
 
 /**
  * Constructs a proxy to another api method
  * @type {Function}
  */
-exports.proxyFactory = proxyFactory;
+exports.proxyFactory = exports.factory.proxy;
 
 // export so that we can test this
 exports._resolveUrl = resolveUrl;
@@ -41251,60 +42771,66 @@ exports.namespaceFactory = function () {
   return ClientNamespace;
 };
 
-var _ = require('./utils');
+function makeFactoryWithModifier(modifier) {
+  modifier = modifier || _.identity;
 
-function factory(spec) {
-  if (!_.isPlainObject(spec.params)) {
-    spec.params = {};
-  }
+  var factory = function (spec) {
+    spec = modifier(spec);
 
-  if (!spec.method) {
-    spec.method = 'GET';
-  }
-
-  function action(params, cb) {
-    if (typeof params === 'function') {
-      cb = params;
-      params = {};
-    } else {
-      params = params || {};
-      cb = typeof cb === 'function' ? cb : null;
+    if (!_.isPlainObject(spec.params)) {
+      spec.params = {};
     }
 
-    try {
-      return exec(this.transport, spec, _.clone(params), cb);
-    } catch (e) {
-      if (typeof cb === 'function') {
-        _.nextTick(cb, e);
+    if (!spec.method) {
+      spec.method = 'GET';
+    }
+
+    function action(params, cb) {
+      if (typeof params === 'function') {
+        cb = params;
+        params = {};
       } else {
-        var def = this.transport.defer();
-        def.reject(e);
-        return def.promise;
+        params = params || {};
+        cb = typeof cb === 'function' ? cb : null;
+      }
+
+      try {
+        return exec(this.transport, spec, _.clone(params), cb);
+      } catch (e) {
+        if (typeof cb === 'function') {
+          _.nextTick(cb, e);
+        } else {
+          var def = this.transport.defer();
+          def.reject(e);
+          return def.promise;
+        }
       }
     }
-  }
 
-  action.spec = spec;
+    action.spec = spec;
 
-  return action;
-}
-
-function proxyFactory(fn, spec) {
-  return function (params, cb) {
-    if (typeof params === 'function') {
-      cb = params;
-      params = {};
-    } else {
-      params = params || {};
-      cb = typeof cb === 'function' ? cb : null;
-    }
-
-    if (spec.transform) {
-      spec.transform(params);
-    }
-
-    return fn.call(this, params, cb);
+    return action;
   };
+
+  factory.proxy = function (fn, spec) {
+    return function (params, cb) {
+      if (typeof params === 'function') {
+        cb = params;
+        params = {};
+      } else {
+        params = params || {};
+        cb = typeof cb === 'function' ? cb : null;
+      }
+
+      if (spec.transform) {
+        spec.transform(params);
+      }
+
+      return fn.call(this, params, cb);
+    };
+  };
+
+  return factory;
 }
 
 var castType = {
@@ -41514,9 +43040,7 @@ function exec(transport, spec, params, cb) {
     }, []);
   }
 
-  var key, paramSpec;
-
-  for (key in params) {
+  for (var key in params) {
     if (params.hasOwnProperty(key) && params[key] != null) {
       switch (key) {
       case 'body':
@@ -41531,7 +43055,7 @@ function exec(transport, spec, params, cb) {
         request.method = _.toUpperString(params[key]);
         break;
       default:
-        paramSpec = spec.params[key];
+        var paramSpec = spec.params[key];
         if (paramSpec) {
           // param keys don't always match the param name, in those cases it's stored in the param def as "name"
           paramSpec.name = paramSpec.name || key;
