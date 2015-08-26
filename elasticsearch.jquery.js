@@ -1,4 +1,4 @@
-/*! elasticsearch - v7.0.0 - 2015-08-26
+/*! elasticsearch - v8.0.0 - 2015-08-26
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -27426,6 +27426,7 @@ api.indices.prototype.close = ca({
  * @param {Object} params - An object with parameters used to carry out this action
  * @param {Date, Number} params.timeout - Explicit operation timeout
  * @param {Date, Number} params.masterTimeout - Specify timeout for connection to master
+ * @param {Boolean} params.updateAllTypes - Whether to update the mapping for all fields with the same name across all types or not
  * @param {String} params.index - The name of the index
  */
 api.indices.prototype.create = ca({
@@ -27436,6 +27437,10 @@ api.indices.prototype.create = ca({
     masterTimeout: {
       type: 'time',
       name: 'master_timeout'
+    },
+    updateAllTypes: {
+      type: 'boolean',
+      name: 'update_all_types'
     }
   },
   url: {
@@ -28621,6 +28626,7 @@ api.indices.prototype.putAlias = ca({
  * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
  * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
  * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {Boolean} params.updateAllTypes - Whether to update the mapping for all fields with the same name across all types or not
  * @param {String, String[], Boolean} params.index - A comma-separated list of index names the mapping should be added to (supports wildcards); use `_all` or omit to add the mapping on all indices.
  * @param {String} params.type - The name of the document type
  */
@@ -28651,6 +28657,10 @@ api.indices.prototype.putMapping = ca({
         'all'
       ],
       name: 'expand_wildcards'
+    },
+    updateAllTypes: {
+      type: 'boolean',
+      name: 'update_all_types'
     }
   },
   urls: [
@@ -31424,7 +31434,7 @@ function Client(config) {
   }
 
 
-  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '2.0');
+  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.7');
   if (!config.sniffEndpoint && EsApiClient.prototype === Client.apis['0.90']) {
     config.sniffEndpoint = '/_cluster/nodes';
   }
