@@ -1,10 +1,134 @@
-/*! elasticsearch - v8.0.1 - 2015-08-26
+/*! elasticsearch - v8.1.0 - 2015-09-08
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache-2.0 */
 
 ;(function () {
 /* prevent lodash from detecting external amd loaders */var define; 
 ;(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+;(function (exports) {
+	'use strict';
+
+  var Arr = (typeof Uint8Array !== 'undefined')
+    ? Uint8Array
+    : Array
+
+	var PLUS   = '+'.charCodeAt(0)
+	var SLASH  = '/'.charCodeAt(0)
+	var NUMBER = '0'.charCodeAt(0)
+	var LOWER  = 'a'.charCodeAt(0)
+	var UPPER  = 'A'.charCodeAt(0)
+	var PLUS_URL_SAFE = '-'.charCodeAt(0)
+	var SLASH_URL_SAFE = '_'.charCodeAt(0)
+
+	function decode (elt) {
+		var code = elt.charCodeAt(0)
+		if (code === PLUS ||
+		    code === PLUS_URL_SAFE)
+			return 62 // '+'
+		if (code === SLASH ||
+		    code === SLASH_URL_SAFE)
+			return 63 // '/'
+		if (code < NUMBER)
+			return -1 //no match
+		if (code < NUMBER + 10)
+			return code - NUMBER + 26 + 26
+		if (code < UPPER + 26)
+			return code - UPPER
+		if (code < LOWER + 26)
+			return code - LOWER + 26
+	}
+
+	function b64ToByteArray (b64) {
+		var i, j, l, tmp, placeHolders, arr
+
+		if (b64.length % 4 > 0) {
+			throw new Error('Invalid string. Length must be a multiple of 4')
+		}
+
+		// the number of equal signs (place holders)
+		// if there are two placeholders, than the two characters before it
+		// represent one byte
+		// if there is only one, then the three characters before it represent 2 bytes
+		// this is just a cheap hack to not do indexOf twice
+		var len = b64.length
+		placeHolders = '=' === b64.charAt(len - 2) ? 2 : '=' === b64.charAt(len - 1) ? 1 : 0
+
+		// base64 is 4/3 + up to two characters of the original data
+		arr = new Arr(b64.length * 3 / 4 - placeHolders)
+
+		// if there are placeholders, only get up to the last complete 4 chars
+		l = placeHolders > 0 ? b64.length - 4 : b64.length
+
+		var L = 0
+
+		function push (v) {
+			arr[L++] = v
+		}
+
+		for (i = 0, j = 0; i < l; i += 4, j += 3) {
+			tmp = (decode(b64.charAt(i)) << 18) | (decode(b64.charAt(i + 1)) << 12) | (decode(b64.charAt(i + 2)) << 6) | decode(b64.charAt(i + 3))
+			push((tmp & 0xFF0000) >> 16)
+			push((tmp & 0xFF00) >> 8)
+			push(tmp & 0xFF)
+		}
+
+		if (placeHolders === 2) {
+			tmp = (decode(b64.charAt(i)) << 2) | (decode(b64.charAt(i + 1)) >> 4)
+			push(tmp & 0xFF)
+		} else if (placeHolders === 1) {
+			tmp = (decode(b64.charAt(i)) << 10) | (decode(b64.charAt(i + 1)) << 4) | (decode(b64.charAt(i + 2)) >> 2)
+			push((tmp >> 8) & 0xFF)
+			push(tmp & 0xFF)
+		}
+
+		return arr
+	}
+
+	function uint8ToBase64 (uint8) {
+		var i,
+			extraBytes = uint8.length % 3, // if we have 1 byte left, pad 2 bytes
+			output = "",
+			temp, length
+
+		function encode (num) {
+			return lookup.charAt(num)
+		}
+
+		function tripletToBase64 (num) {
+			return encode(num >> 18 & 0x3F) + encode(num >> 12 & 0x3F) + encode(num >> 6 & 0x3F) + encode(num & 0x3F)
+		}
+
+		// go through the array every three bytes, we'll deal with trailing stuff later
+		for (i = 0, length = uint8.length - extraBytes; i < length; i += 3) {
+			temp = (uint8[i] << 16) + (uint8[i + 1] << 8) + (uint8[i + 2])
+			output += tripletToBase64(temp)
+		}
+
+		// pad the end with zeros, but make sure to not forget the extra bytes
+		switch (extraBytes) {
+			case 1:
+				temp = uint8[uint8.length - 1]
+				output += encode(temp >> 2)
+				output += encode((temp << 4) & 0x3F)
+				output += '=='
+				break
+			case 2:
+				temp = (uint8[uint8.length - 2] << 8) + (uint8[uint8.length - 1])
+				output += encode(temp >> 10)
+				output += encode((temp >> 4) & 0x3F)
+				output += encode((temp << 2) & 0x3F)
+				output += '='
+				break
+		}
+
+		return output
+	}
+
+	exports.toByteArray = b64ToByteArray
+	exports.fromByteArray = uint8ToBase64
+}(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
 
 },{}],2:[function(require,module,exports){
 
@@ -1033,7 +1157,7 @@ exports.extname = function(path) {
   return splitPath(path)[3];
 };
 
-},{"__browserify_process":13,"_shims":2,"util":8}],6:[function(require,module,exports){
+},{"__browserify_process":14,"_shims":2,"util":8}],6:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -1244,7 +1368,7 @@ QueryString.parse = QueryString.decode = function(qs, sep, eq, options) {
 
   return obj;
 };
-},{"_shims":2,"buffer":10,"util":8}],7:[function(require,module,exports){
+},{"_shims":2,"buffer":11,"util":8}],7:[function(require,module,exports){
 // Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
@@ -2485,6 +2609,8 @@ function hasOwnProperty(obj, prop) {
 }
 
 },{"_shims":2}],9:[function(require,module,exports){
+
+},{}],10:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
       eLen = nBytes * 8 - mLen - 1,
@@ -2570,7 +2696,7 @@ exports.writeIEEE754 = function(buffer, value, offset, isBE, mLen, nBytes) {
   buffer[offset + i - d] |= s * 128;
 };
 
-},{}],10:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 var assert;
 exports.Buffer = Buffer;
 exports.SlowBuffer = Buffer;
@@ -3699,133 +3825,7 @@ Buffer.prototype.writeDoubleBE = function(value, offset, noAssert) {
   writeDouble(this, value, offset, true, noAssert);
 };
 
-},{"./buffer_ieee754":9,"assert":3,"base64-js":11}],11:[function(require,module,exports){
-var lookup = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
-
-;(function (exports) {
-	'use strict';
-
-  var Arr = (typeof Uint8Array !== 'undefined')
-    ? Uint8Array
-    : Array
-
-	var PLUS   = '+'.charCodeAt(0)
-	var SLASH  = '/'.charCodeAt(0)
-	var NUMBER = '0'.charCodeAt(0)
-	var LOWER  = 'a'.charCodeAt(0)
-	var UPPER  = 'A'.charCodeAt(0)
-	var PLUS_URL_SAFE = '-'.charCodeAt(0)
-	var SLASH_URL_SAFE = '_'.charCodeAt(0)
-
-	function decode (elt) {
-		var code = elt.charCodeAt(0)
-		if (code === PLUS ||
-		    code === PLUS_URL_SAFE)
-			return 62 // '+'
-		if (code === SLASH ||
-		    code === SLASH_URL_SAFE)
-			return 63 // '/'
-		if (code < NUMBER)
-			return -1 //no match
-		if (code < NUMBER + 10)
-			return code - NUMBER + 26 + 26
-		if (code < UPPER + 26)
-			return code - UPPER
-		if (code < LOWER + 26)
-			return code - LOWER + 26
-	}
-
-	function b64ToByteArray (b64) {
-		var i, j, l, tmp, placeHolders, arr
-
-		if (b64.length % 4 > 0) {
-			throw new Error('Invalid string. Length must be a multiple of 4')
-		}
-
-		// the number of equal signs (place holders)
-		// if there are two placeholders, than the two characters before it
-		// represent one byte
-		// if there is only one, then the three characters before it represent 2 bytes
-		// this is just a cheap hack to not do indexOf twice
-		var len = b64.length
-		placeHolders = '=' === b64.charAt(len - 2) ? 2 : '=' === b64.charAt(len - 1) ? 1 : 0
-
-		// base64 is 4/3 + up to two characters of the original data
-		arr = new Arr(b64.length * 3 / 4 - placeHolders)
-
-		// if there are placeholders, only get up to the last complete 4 chars
-		l = placeHolders > 0 ? b64.length - 4 : b64.length
-
-		var L = 0
-
-		function push (v) {
-			arr[L++] = v
-		}
-
-		for (i = 0, j = 0; i < l; i += 4, j += 3) {
-			tmp = (decode(b64.charAt(i)) << 18) | (decode(b64.charAt(i + 1)) << 12) | (decode(b64.charAt(i + 2)) << 6) | decode(b64.charAt(i + 3))
-			push((tmp & 0xFF0000) >> 16)
-			push((tmp & 0xFF00) >> 8)
-			push(tmp & 0xFF)
-		}
-
-		if (placeHolders === 2) {
-			tmp = (decode(b64.charAt(i)) << 2) | (decode(b64.charAt(i + 1)) >> 4)
-			push(tmp & 0xFF)
-		} else if (placeHolders === 1) {
-			tmp = (decode(b64.charAt(i)) << 10) | (decode(b64.charAt(i + 1)) << 4) | (decode(b64.charAt(i + 2)) >> 2)
-			push((tmp >> 8) & 0xFF)
-			push(tmp & 0xFF)
-		}
-
-		return arr
-	}
-
-	function uint8ToBase64 (uint8) {
-		var i,
-			extraBytes = uint8.length % 3, // if we have 1 byte left, pad 2 bytes
-			output = "",
-			temp, length
-
-		function encode (num) {
-			return lookup.charAt(num)
-		}
-
-		function tripletToBase64 (num) {
-			return encode(num >> 18 & 0x3F) + encode(num >> 12 & 0x3F) + encode(num >> 6 & 0x3F) + encode(num & 0x3F)
-		}
-
-		// go through the array every three bytes, we'll deal with trailing stuff later
-		for (i = 0, length = uint8.length - extraBytes; i < length; i += 3) {
-			temp = (uint8[i] << 16) + (uint8[i + 1] << 8) + (uint8[i + 2])
-			output += tripletToBase64(temp)
-		}
-
-		// pad the end with zeros, but make sure to not forget the extra bytes
-		switch (extraBytes) {
-			case 1:
-				temp = uint8[uint8.length - 1]
-				output += encode(temp >> 2)
-				output += encode((temp << 4) & 0x3F)
-				output += '=='
-				break
-			case 2:
-				temp = (uint8[uint8.length - 2] << 8) + (uint8[uint8.length - 1])
-				output += encode(temp >> 10)
-				output += encode((temp >> 4) & 0x3F)
-				output += encode((temp << 2) & 0x3F)
-				output += '='
-				break
-		}
-
-		return output
-	}
-
-	exports.toByteArray = b64ToByteArray
-	exports.fromByteArray = uint8ToBase64
-}(typeof exports === 'undefined' ? (this.base64js = {}) : exports))
-
-},{}],12:[function(require,module,exports){
+},{"./buffer_ieee754":10,"assert":3,"base64-js":1}],12:[function(require,module,exports){
 require=(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 exports.readIEEE754 = function(buffer, offset, isBE, mLen, nBytes) {
   var e, m,
@@ -6206,61 +6206,6 @@ function hasOwnProperty(obj, prop) {
 ;;module.exports=require("buffer-browserify")
 
 },{}],13:[function(require,module,exports){
-// shim for using process in browser
-
-var process = module.exports = {};
-
-process.nextTick = (function () {
-    var canSetImmediate = typeof window !== 'undefined'
-    && window.setImmediate;
-    var canPost = typeof window !== 'undefined'
-    && window.postMessage && window.addEventListener
-    ;
-
-    if (canSetImmediate) {
-        return function (f) { return window.setImmediate(f) };
-    }
-
-    if (canPost) {
-        var queue = [];
-        window.addEventListener('message', function (ev) {
-            var source = ev.source;
-            if ((source === window || source === null) && ev.data === 'process-tick') {
-                ev.stopPropagation();
-                if (queue.length > 0) {
-                    var fn = queue.shift();
-                    fn();
-                }
-            }
-        }, true);
-
-        return function nextTick(fn) {
-            queue.push(fn);
-            window.postMessage('process-tick', '*');
-        };
-    }
-
-    return function nextTick(fn) {
-        setTimeout(fn, 0);
-    };
-})();
-
-process.title = 'browser';
-process.browser = true;
-process.env = {};
-process.argv = [];
-
-process.binding = function (name) {
-    throw new Error('process.binding is not supported');
-}
-
-// TODO(shtylman)
-process.cwd = function () { return '/' };
-process.chdir = function (dir) {
-    throw new Error('process.chdir is not supported');
-};
-
-},{}],14:[function(require,module,exports){
 var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};/**
  * @license
  * lodash 3.10.1 (Custom Build) <https://lodash.com/>
@@ -18819,6 +18764,61 @@ var global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? 
   }
 }.call(this));
 
+},{}],14:[function(require,module,exports){
+// shim for using process in browser
+
+var process = module.exports = {};
+
+process.nextTick = (function () {
+    var canSetImmediate = typeof window !== 'undefined'
+    && window.setImmediate;
+    var canPost = typeof window !== 'undefined'
+    && window.postMessage && window.addEventListener
+    ;
+
+    if (canSetImmediate) {
+        return function (f) { return window.setImmediate(f) };
+    }
+
+    if (canPost) {
+        var queue = [];
+        window.addEventListener('message', function (ev) {
+            var source = ev.source;
+            if ((source === window || source === null) && ev.data === 'process-tick') {
+                ev.stopPropagation();
+                if (queue.length > 0) {
+                    var fn = queue.shift();
+                    fn();
+                }
+            }
+        }, true);
+
+        return function nextTick(fn) {
+            queue.push(fn);
+            window.postMessage('process-tick', '*');
+        };
+    }
+
+    return function nextTick(fn) {
+        setTimeout(fn, 0);
+    };
+})();
+
+process.title = 'browser';
+process.browser = true;
+process.env = {};
+process.argv = [];
+
+process.binding = function (name) {
+    throw new Error('process.binding is not supported');
+}
+
+// TODO(shtylman)
+process.cwd = function () { return '/' };
+process.chdir = function (dir) {
+    throw new Error('process.chdir is not supported');
+};
+
 },{}],15:[function(require,module,exports){
 var process=require("__browserify_process");/* global jQuery */
 (function ($) {
@@ -18842,7 +18842,7 @@ var process=require("__browserify_process");/* global jQuery */
   };
 
 }(jQuery));
-},{"./elasticsearch":16,"__browserify_process":13}],16:[function(require,module,exports){
+},{"./elasticsearch":16,"__browserify_process":14}],16:[function(require,module,exports){
 // In order to help people who were accidentally upgraded to this ES client,
 // throw an error when they try to instanciate the exported function.
 // previous "elasticsearch" module -> https://github.com/ncb000gt/node-es
@@ -25320,7 +25320,7 @@ api.cat = namespace();
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.name - A comma-separated list of alias names to return
  */
 api.cat.prototype.aliases = ca({
@@ -25341,7 +25341,7 @@ api.cat.prototype.aliases = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   urls: [
@@ -25368,7 +25368,7 @@ api.cat.prototype.aliases = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.nodeId - A comma-separated list of node IDs or names to limit the returned information
  */
 api.cat.prototype.allocation = ca({
@@ -25398,7 +25398,7 @@ api.cat.prototype.allocation = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   urls: [
@@ -25424,7 +25424,7 @@ api.cat.prototype.allocation = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
  */
 api.cat.prototype.count = ca({
@@ -25445,7 +25445,7 @@ api.cat.prototype.count = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   urls: [
@@ -25472,7 +25472,7 @@ api.cat.prototype.count = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.fields - A comma-separated list of fields to return the fielddata size
  */
 api.cat.prototype.fielddata = ca({
@@ -25502,7 +25502,7 @@ api.cat.prototype.fielddata = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     },
     fields: {
       type: 'list'
@@ -25532,7 +25532,7 @@ api.cat.prototype.fielddata = ca({
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
  * @param {Boolean} [params.ts=true] - Set to false to disable timestamping
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  */
 api.cat.prototype.health = ca({
   params: {
@@ -25556,7 +25556,7 @@ api.cat.prototype.health = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   url: {
@@ -25592,7 +25592,7 @@ api.cat.prototype.help = ca({
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
  * @param {Boolean} params.pri - Set to true to return stats only for primary shards
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
  */
 api.cat.prototype.indices = ca({
@@ -25626,7 +25626,7 @@ api.cat.prototype.indices = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   urls: [
@@ -25652,7 +25652,7 @@ api.cat.prototype.indices = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  */
 api.cat.prototype.master = ca({
   params: {
@@ -25672,7 +25672,7 @@ api.cat.prototype.master = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   url: {
@@ -25688,7 +25688,7 @@ api.cat.prototype.master = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  */
 api.cat.prototype.nodeattrs = ca({
   params: {
@@ -25708,7 +25708,7 @@ api.cat.prototype.nodeattrs = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   url: {
@@ -25724,7 +25724,7 @@ api.cat.prototype.nodeattrs = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  */
 api.cat.prototype.nodes = ca({
   params: {
@@ -25744,7 +25744,7 @@ api.cat.prototype.nodes = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   url: {
@@ -25760,7 +25760,7 @@ api.cat.prototype.nodes = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  */
 api.cat.prototype.pendingTasks = ca({
   params: {
@@ -25780,7 +25780,7 @@ api.cat.prototype.pendingTasks = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   url: {
@@ -25796,7 +25796,7 @@ api.cat.prototype.pendingTasks = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  */
 api.cat.prototype.plugins = ca({
   params: {
@@ -25816,7 +25816,7 @@ api.cat.prototype.plugins = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   url: {
@@ -25832,7 +25832,7 @@ api.cat.prototype.plugins = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
  */
 api.cat.prototype.recovery = ca({
@@ -25859,7 +25859,7 @@ api.cat.prototype.recovery = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   urls: [
@@ -25883,7 +25883,7 @@ api.cat.prototype.recovery = ca({
  * @param {Object} params - An object with parameters used to carry out this action
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
  */
 api.cat.prototype.segments = ca({
@@ -25897,7 +25897,7 @@ api.cat.prototype.segments = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   urls: [
@@ -25923,7 +25923,7 @@ api.cat.prototype.segments = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {String, String[], Boolean} params.index - A comma-separated list of index names to limit the returned information
  */
 api.cat.prototype.shards = ca({
@@ -25944,7 +25944,7 @@ api.cat.prototype.shards = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     }
   },
   urls: [
@@ -25970,7 +25970,7 @@ api.cat.prototype.shards = ca({
  * @param {Date, Number} params.masterTimeout - Explicit operation timeout for connection to master node
  * @param {String, String[], Boolean} params.h - Comma-separated list of column names to display
  * @param {Boolean} params.help - Return help information
- * @param {Boolean} [params.v=true] - Verbose mode. Display column headers
+ * @param {Boolean} params.v - Verbose mode. Display column headers
  * @param {Boolean} params.fullId - Enables displaying the complete node ids
  */
 api.cat.prototype.threadPool = ca({
@@ -25991,7 +25991,7 @@ api.cat.prototype.threadPool = ca({
     },
     v: {
       type: 'boolean',
-      'default': true
+      'default': false
     },
     fullId: {
       type: 'boolean',
@@ -28798,7 +28798,7 @@ api.indices.prototype.putTemplate = ca({
  * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed) in the search request to warm
  * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices in the search request to warm. (This includes `_all` string or when no indices have been specified)
  * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both, in the search request to warm.
- * @param {Boolean} params.requestCache - Specify whether the request to be wamred shoyd use the request cache, defaults to index level setting
+ * @param {Boolean} params.requestCache - Specify whether the request to be warmed should use the request cache, defaults to index level setting
  * @param {String, String[], Boolean} params.index - A comma-separated list of index names to register the warmer for; use `_all` or omit to perform the operation on all indices
  * @param {String} params.name - The name of the warmer
  * @param {String, String[], Boolean} params.type - A comma-separated list of document types to register the warmer for; leave empty to perform the operation on all types
@@ -32267,7 +32267,7 @@ ConnectionPool.prototype.close = function () {
   this.setHosts([]);
 };
 ConnectionPool.prototype.empty = ConnectionPool.prototype.close;
-},{"./connectors":25,"./log":29,"./selectors":34,"./utils":42,"__browserify_process":13}],25:[function(require,module,exports){
+},{"./connectors":25,"./log":29,"./selectors":34,"./utils":42,"__browserify_process":14}],25:[function(require,module,exports){
 var opts = {
   xhr: require('./xhr'),
   jquery: require('./jquery'),
@@ -32293,7 +32293,7 @@ if (opts.xhr) {
 
 module.exports = opts;
 
-},{"../utils":42,"./angular":1,"./jquery":26,"./xhr":1}],26:[function(require,module,exports){
+},{"../utils":42,"./angular":9,"./jquery":26,"./xhr":9}],26:[function(require,module,exports){
 /* jshint browser: true, jquery: true */
 
 /**
@@ -33039,7 +33039,7 @@ Log.normalizeTraceArgs = function (method, requestUrl, body, responseBody, respo
 
 module.exports = Log;
 
-},{"./loggers":31,"./utils":42,"__browserify_process":13,"events":4,"url":7}],30:[function(require,module,exports){
+},{"./loggers":31,"./utils":42,"__browserify_process":14,"events":4,"url":7}],30:[function(require,module,exports){
 var _ = require('./utils');
 
 /**
@@ -33869,7 +33869,7 @@ Transport.prototype.close = function () {
   this.connectionPool.close();
 };
 
-},{"./connection_pool":24,"./errors":27,"./host":28,"./log":29,"./nodes_to_host":33,"./serializers":38,"./transport/sniff_on_connection_fault":41,"./utils":42,"bluebird":1}],41:[function(require,module,exports){
+},{"./connection_pool":24,"./errors":27,"./host":28,"./log":29,"./nodes_to_host":33,"./serializers":38,"./transport/sniff_on_connection_fault":41,"./utils":42,"bluebird":9}],41:[function(require,module,exports){
 var _ = require('../utils');
 
 
@@ -34376,6 +34376,6 @@ _.now = function () {
 
 module.exports = utils;
 
-},{"__browserify_Buffer":12,"__browserify_process":13,"lodash":14,"path":5,"util":8}]},{},[15])
+},{"__browserify_Buffer":12,"__browserify_process":14,"lodash":13,"path":5,"util":8}]},{},[15])
 ;
 }());
