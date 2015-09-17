@@ -1,4 +1,4 @@
-/*! elasticsearch - v8.1.0 - 2015-09-08
+/*! elasticsearch - v8.2.0 - 2015-09-17
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -25223,9 +25223,9 @@ api.create = ca.proxy(api.index, {
     params.op_type = 'create';
   }
 });
-},{"../client_action":22,"../utils":42}],18:[function(require,module,exports){
+},{"../client_action":22,"../utils":43}],18:[function(require,module,exports){
 module.exports=require(17)
-},{"../client_action":22,"../utils":42}],19:[function(require,module,exports){
+},{"../client_action":22,"../utils":43}],19:[function(require,module,exports){
 /* jshint maxlen: false */
 
 var ca = require('../client_action').makeFactoryWithModifier(function (spec) {
@@ -27833,12 +27833,33 @@ api.indices.prototype.flush = ca({
  * Perform a [indices.flushSynced](http://www.elastic.co/guide/en/elasticsearch/reference/master/indices-synced-flush.html) request
  *
  * @param {Object} params - An object with parameters used to carry out this action
- * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string for all indices
  * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
  * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
  * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names; use `_all` or empty string for all indices
  */
 api.indices.prototype.flushSynced = ca({
+  params: {
+    ignoreUnavailable: {
+      type: 'boolean',
+      name: 'ignore_unavailable'
+    },
+    allowNoIndices: {
+      type: 'boolean',
+      name: 'allow_no_indices'
+    },
+    expandWildcards: {
+      type: 'enum',
+      'default': 'open',
+      options: [
+        'open',
+        'closed',
+        'none',
+        'all'
+      ],
+      name: 'expand_wildcards'
+    }
+  },
   urls: [
     {
       fmt: '/<%=index%>/_flush/synced',
@@ -30623,8 +30644,8 @@ api.searchExists = ca({
  * @param {Boolean} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
  * @param {Boolean} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
  * @param {String} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
- * @param {String} params.index - The name of the index
- * @param {String} params.type - The type of the document
+ * @param {String, String[], Boolean} params.index - A comma-separated list of index names to search; use `_all` or empty string to perform the operation on all indices
+ * @param {String, String[], Boolean} params.type - A comma-separated list of document types to search; leave empty to perform the operation on all types
  */
 api.searchShards = ca({
   params: {
@@ -30662,10 +30683,10 @@ api.searchShards = ca({
       fmt: '/<%=index%>/<%=type%>/_search_shards',
       req: {
         index: {
-          type: 'string'
+          type: 'list'
         },
         type: {
-          type: 'string'
+          type: 'list'
         }
       }
     },
@@ -30673,7 +30694,7 @@ api.searchShards = ca({
       fmt: '/<%=index%>/_search_shards',
       req: {
         index: {
-          type: 'string'
+          type: 'list'
         }
       }
     },
@@ -31358,9 +31379,10 @@ api.create = ca.proxy(api.index, {
     params.op_type = 'create';
   }
 });
-},{"../client_action":22,"../utils":42}],20:[function(require,module,exports){
+},{"../client_action":22,"../utils":43}],20:[function(require,module,exports){
 module.exports = {
   '2.0': require('./2_0'),
+  '_default': require('./1_7'),
   '1.7': require('./1_7'),
   '1.6': require('./1_6')
 };
@@ -31434,7 +31456,7 @@ function Client(config) {
   }
 
 
-  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '1.7');
+  EsApiClient.prototype = _.funcEnum(config, 'apiVersion', Client.apis, '_default');
   if (!config.sniffEndpoint && EsApiClient.prototype === Client.apis['0.90']) {
     config.sniffEndpoint = '/_cluster/nodes';
   }
@@ -31470,7 +31492,8 @@ function Client(config) {
 }
 
 Client.apis = require('./apis');
-},{"./apis":20,"./client":21,"./client_action":22,"./connection":23,"./connection_pool":24,"./connectors":25,"./errors":27,"./host":28,"./log":29,"./logger":30,"./loggers":31,"./nodes_to_host":33,"./selectors":34,"./serializers":38,"./transport":40,"./utils":42}],22:[function(require,module,exports){
+
+},{"./apis":20,"./client":21,"./client_action":22,"./connection":23,"./connection_pool":24,"./connectors":25,"./errors":27,"./host":28,"./log":29,"./logger":30,"./loggers":31,"./nodes_to_host":33,"./selectors":34,"./serializers":38,"./transport":40,"./utils":43}],22:[function(require,module,exports){
 
 var _ = require('./utils');
 
@@ -31829,7 +31852,7 @@ function commaSepList(str) {
     return i.trim();
   });
 }
-},{"./utils":42}],23:[function(require,module,exports){
+},{"./utils":43}],23:[function(require,module,exports){
 module.exports = ConnectionAbstract;
 
 var _ = require('./utils');
@@ -31929,7 +31952,7 @@ ConnectionAbstract.prototype.setStatus = function (status) {
     this.removeAllListeners();
   }
 };
-},{"./errors":27,"./host":28,"./log":29,"./utils":42,"events":4}],24:[function(require,module,exports){
+},{"./errors":27,"./host":28,"./log":29,"./utils":43,"events":4}],24:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Manager of connections to a node(s), capable of ensuring that connections are clear and living
  * before providing them to the application
@@ -32260,6 +32283,12 @@ ConnectionPool.prototype.setHosts = function (hosts) {
   }
 };
 
+ConnectionPool.prototype.getAllHosts = function () {
+  return _.values(this.index).map(function (connection) {
+    return connection.host;
+  });
+};
+
 /**
  * Close the conncetion pool, as well as all of it's connections
  */
@@ -32267,7 +32296,8 @@ ConnectionPool.prototype.close = function () {
   this.setHosts([]);
 };
 ConnectionPool.prototype.empty = ConnectionPool.prototype.close;
-},{"./connectors":25,"./log":29,"./selectors":34,"./utils":42,"__browserify_process":14}],25:[function(require,module,exports){
+
+},{"./connectors":25,"./log":29,"./selectors":34,"./utils":43,"__browserify_process":14}],25:[function(require,module,exports){
 var opts = {
   xhr: require('./xhr'),
   jquery: require('./jquery'),
@@ -32293,7 +32323,7 @@ if (opts.xhr) {
 
 module.exports = opts;
 
-},{"../utils":42,"./angular":9,"./jquery":26,"./xhr":9}],26:[function(require,module,exports){
+},{"../utils":43,"./angular":9,"./jquery":26,"./xhr":9}],26:[function(require,module,exports){
 /* jshint browser: true, jquery: true */
 
 /**
@@ -32339,7 +32369,7 @@ JqueryConnector.prototype.request = function (params, cb) {
 
 
 
-},{"../connection":23,"../errors":27,"../utils":42}],27:[function(require,module,exports){
+},{"../connection":23,"../errors":27,"../utils":43}],27:[function(require,module,exports){
 var _ = require('./utils');
 var errors = module.exports;
 
@@ -32525,7 +32555,7 @@ _.each(statusCodes, function (name, status) {
   errors[className] = StatusCodeError;
   errors[status] = StatusCodeError;
 });
-},{"./utils":42}],28:[function(require,module,exports){
+},{"./utils":43}],28:[function(require,module,exports){
 var Buffer=require("__browserify_Buffer").Buffer;/**
  * Class to wrap URLS, formatting them and maintaining their separate details
  * @type {[type]}
@@ -32732,7 +32762,7 @@ Host.prototype.toString = function () {
   return this.makeUrl();
 };
 
-},{"./utils":42,"__browserify_Buffer":12,"querystring":6,"url":7}],29:[function(require,module,exports){
+},{"./utils":43,"__browserify_Buffer":12,"querystring":6,"url":7}],29:[function(require,module,exports){
 var process=require("__browserify_process");var _ = require('./utils');
 var url = require('url');
 var EventEmitter = require('events').EventEmitter;
@@ -33039,7 +33069,7 @@ Log.normalizeTraceArgs = function (method, requestUrl, body, responseBody, respo
 
 module.exports = Log;
 
-},{"./loggers":31,"./utils":42,"__browserify_process":14,"events":4,"url":7}],30:[function(require,module,exports){
+},{"./loggers":31,"./utils":43,"__browserify_process":14,"events":4,"url":7}],30:[function(require,module,exports){
 var _ = require('./utils');
 
 /**
@@ -33221,7 +33251,7 @@ LoggerAbstract.prototype._prettyJson = function (body) {
 
 module.exports = LoggerAbstract;
 
-},{"./utils":42}],31:[function(require,module,exports){
+},{"./utils":43}],31:[function(require,module,exports){
 module.exports = {
   console: require('./console')
 };
@@ -33327,7 +33357,7 @@ Console.prototype.onTrace = _.handler(function (msg) {
   this.write('TRACE', this._formatTraceMessage(msg), 'log');
 });
 
-},{"../logger":30,"../utils":42}],33:[function(require,module,exports){
+},{"../logger":30,"../utils":43}],33:[function(require,module,exports){
 var _ = require('./utils');
 var extractHostPartsRE = /\[\/*([^:]+):(\d+)\]/;
 
@@ -33361,7 +33391,7 @@ function makeNodeParser(hostProp) {
 module.exports = makeNodeParser('http_address');
 module.exports.thrift = makeNodeParser('transport_address');
 
-},{"./utils":42}],34:[function(require,module,exports){
+},{"./utils":43}],34:[function(require,module,exports){
 module.exports = {
   random: require('./random'),
   roundRobin: require('./round_robin')
@@ -33417,7 +33447,7 @@ AngularSerializer.prototype.encode = function (val) {
 };
 
 module.exports = AngularSerializer;
-},{"../serializers/json":39,"../utils":42}],38:[function(require,module,exports){
+},{"../serializers/json":39,"../utils":43}],38:[function(require,module,exports){
 module.exports = {
   angular: require('./angular'),
   json: require('./json')
@@ -33484,7 +33514,7 @@ Json.prototype.bulkBody = function (val) {
   return body;
 };
 
-},{"../utils":42}],40:[function(require,module,exports){
+},{"../utils":43}],40:[function(require,module,exports){
 /**
  * Class that manages making request, called by all of the API methods.
  * @type {[type]}
@@ -33496,6 +33526,7 @@ var errors = require('./errors');
 var Host = require('./host');
 var Promise = require('bluebird');
 var patchSniffOnConnectionFault = require('./transport/sniff_on_connection_fault');
+var findCommonProtocol = require('./transport/find_common_protocol');
 
 function Transport(config) {
   var self = this;
@@ -33558,6 +33589,12 @@ function Transport(config) {
     self.connectionPool.setHosts(hosts);
   }
 
+  if (config.hasOwnProperty('sniffedNodesProtocol')) {
+    self.sniffedNodesProtocol = config.sniffedNodesProtocol || null;
+  } else {
+    self.sniffedNodesProtocol = findCommonProtocol(self.connectionPool.getAllHosts()) || null;
+  }
+
   if (config.sniffOnStart) {
     self.sniff();
   }
@@ -33618,9 +33655,20 @@ Transport.prototype.request = function (params, cb) {
 
   self.log.debug('starting request', params);
 
+  // determine the response based on the presense of a callback
+  if (typeof cb === 'function') {
+    ret = {
+      abort: abortRequest
+    };
+  } else {
+    defer = this.defer();
+    ret = defer.promise;
+    ret.abort = abortRequest;
+  }
+
   if (params.body && params.method === 'GET') {
     _.nextTick(respond, new TypeError('Body can not be sent with method "GET"'));
-    return;
+    return ret;
   }
 
   // serialize the body
@@ -33774,18 +33822,6 @@ Transport.prototype.request = function (params, cb) {
     }, requestTimeout);
   }
 
-  // determine the response based on the presense of a callback
-  if (typeof cb === 'function') {
-    ret = {
-      abort: abortRequest
-    };
-  } else {
-    defer = this.defer();
-    ret = defer.promise;
-    ret.abort = abortRequest;
-  }
-
-
   if (connection) {
     sendReqWithConnection(void 0, connection);
   } else {
@@ -33832,6 +33868,7 @@ Transport.prototype.sniff = function (cb) {
   var nodesToHostCallback = this.nodesToHostCallback;
   var log = this.log;
   var globalConfig = this._config;
+  var sniffedNodesProtocol = this.sniffedNodesProtocol;
 
   // make cb a function if it isn't
   cb = typeof cb === 'function' ? cb : _.noop;
@@ -33852,6 +33889,10 @@ Transport.prototype.sniff = function (cb) {
       }
 
       connectionPool.setHosts(_.map(hostsConfigs, function (hostConfig) {
+        if (sniffedNodesProtocol) {
+          hostConfig.protocol = sniffedNodesProtocol;
+        }
+
         return new Host(hostConfig, globalConfig);
       }));
     }
@@ -33869,7 +33910,23 @@ Transport.prototype.close = function () {
   this.connectionPool.close();
 };
 
-},{"./connection_pool":24,"./errors":27,"./host":28,"./log":29,"./nodes_to_host":33,"./serializers":38,"./transport/sniff_on_connection_fault":41,"./utils":42,"bluebird":9}],41:[function(require,module,exports){
+},{"./connection_pool":24,"./errors":27,"./host":28,"./log":29,"./nodes_to_host":33,"./serializers":38,"./transport/find_common_protocol":41,"./transport/sniff_on_connection_fault":42,"./utils":43,"bluebird":9}],41:[function(require,module,exports){
+var isEmpty = require('lodash').isEmpty;
+
+module.exports = function (hosts) {
+  if (isEmpty(hosts)) return false;
+
+  var commonProtocol = hosts.shift().protocol;
+  for (var i = 0; i < hosts.length; i++) {
+    if (commonProtocol !== hosts[i].protocol) {
+      return false;
+    }
+  }
+
+  return commonProtocol;
+}
+
+},{"lodash":13}],42:[function(require,module,exports){
 var _ = require('../utils');
 
 
@@ -33929,7 +33986,7 @@ module.exports = function setupSniffOnConnectionFault(transport) {
     pool._onConnectionDied = originalOnDied;
   };
 };
-},{"../utils":42}],42:[function(require,module,exports){
+},{"../utils":43}],43:[function(require,module,exports){
 var process=require("__browserify_process"),Buffer=require("__browserify_Buffer").Buffer;var path = require('path');
 var _ = require('lodash');
 var nodeUtils = require('util');
