@@ -1,4 +1,4 @@
-/*! elasticsearch - v9.0.0 - 2015-10-30
+/*! elasticsearch - v9.0.1 - 2015-11-19
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -52334,7 +52334,9 @@ Console.prototype.onTrace = _.handler(function (msg) {
 
 },{"../logger":32,"../utils":45}],35:[function(require,module,exports){
 var _ = require('./utils');
-var extractHostPartsRE = /\[\/*([^:]+):(\d+)\]/;
+
+var extractHostPartsRE1x = /\[\/*([^:]+):(\d+)\]/;
+var extractHostPartsRE = /^([\.:0-9a-f]*):([0-9]+)?$/;
 
 function makeNodeParser(hostProp) {
   return function (nodes) {
@@ -52345,8 +52347,12 @@ function makeNodeParser(hostProp) {
 
       var hostnameMatches = extractHostPartsRE.exec(node[hostProp]);
       if (!hostnameMatches) {
-        throw new Error('node\'s ' + hostProp + ' property (' + JSON.stringify(node[hostProp]) +
-          ') does not match the expected pattern ' + extractHostPartsRE + '.');
+        hostnameMatches = extractHostPartsRE1x.exec(node[hostProp]);
+      }
+
+      if (!hostnameMatches) {
+        throw new Error('expected node\'s ' + hostProp + ' property (' + JSON.stringify(node[hostProp]) +
+          ') to match either ' + extractHostPartsRE + ' or ' + extractHostPartsRE1x + '.');
       }
 
       hosts.push({
@@ -52490,7 +52496,7 @@ Json.prototype.bulkBody = function (val) {
 };
 
 },{"../utils":45}],42:[function(require,module,exports){
-/**
+var process=require("__browserify_process");/**
  * Class that manages making request, called by all of the API methods.
  * @type {[type]}
  */
@@ -52632,6 +52638,10 @@ Transport.prototype.request = function (params, cb) {
 
   // determine the response based on the presense of a callback
   if (typeof cb === 'function') {
+    // handle callbacks within a domain
+    if (process.domain) {
+      cb = process.domain.bind(cb);
+    }
     ret = {
       abort: abortRequest
     };
@@ -52811,8 +52821,10 @@ Transport.prototype.request = function (params, cb) {
 };
 
 Transport.prototype._timeout = function (cb, delay) {
-  this._timers = this._timers || [];
+  if (this.closed) return;
+
   var id;
+  var timers = this._timers || (this._timers = []);
 
   if ('function' !== typeof cb) {
     id = cb;
@@ -52821,8 +52833,12 @@ Transport.prototype._timeout = function (cb, delay) {
 
   if (cb) {
     // set the timer
-    id = setTimeout(cb, delay);
-    this._timers.push(id);
+    id = setTimeout(function () {
+      _.pull(timers, id);
+      cb();
+    }, delay);
+
+    timers.push(id);
     return id;
   }
 
@@ -52885,11 +52901,13 @@ Transport.prototype.sniff = function (cb) {
  */
 Transport.prototype.close = function () {
   this.log.close();
+  this.closed = true;
   _.each(this._timers, clearTimeout);
+  this._timers = null;
   this.connectionPool.close();
 };
 
-},{"./connection_pool":26,"./errors":29,"./host":30,"./log":31,"./nodes_to_host":35,"./serializers":40,"./transport/find_common_protocol":43,"./transport/sniff_on_connection_fault":44,"./utils":45,"bluebird":9}],43:[function(require,module,exports){
+},{"./connection_pool":26,"./errors":29,"./host":30,"./log":31,"./nodes_to_host":35,"./serializers":40,"./transport/find_common_protocol":43,"./transport/sniff_on_connection_fault":44,"./utils":45,"__browserify_process":14,"bluebird":9}],43:[function(require,module,exports){
 var isEmpty = require('lodash').isEmpty;
 
 module.exports = function (hosts) {
