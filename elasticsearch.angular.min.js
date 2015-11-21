@@ -1,4 +1,4 @@
-/*! elasticsearch - v9.0.1 - 2015-11-19
+/*! elasticsearch - v9.0.2 - 2015-11-21
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache-2.0 */
 
