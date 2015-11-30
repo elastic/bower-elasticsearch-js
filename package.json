@@ -1,6 +1,6 @@
 {
   "name": "elasticsearch-browser",
-  "version": "9.0.2",
+  "version": "10.0.1",
   "description": "The official low-level Elasticsearch client, for use in the browser.",
   "main": "elasticsearch.js",
   "scripts": {

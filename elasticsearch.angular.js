@@ -1,4 +1,4 @@
-/*! elasticsearch - v9.0.2 - 2015-11-21
+/*! elasticsearch - v10.0.1 - 2015-11-30
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2015 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -50337,8 +50337,8 @@ api.create = ca.proxy(api.index, {
 });
 },{"../client_action":23,"../utils":44}],21:[function(require,module,exports){
 module.exports = {
+  '_default': require('./2_1'),
   '2.1': require('./2_1'),
-  '_default': require('./2_0'),
   '2.0': require('./2_0'),
   '1.7': require('./1_7'),
   '1.6': require('./1_6'),
@@ -51802,19 +51802,26 @@ Log.prototype.close = function () {
   }
 };
 
-Log.prototype.listenerCount = function (event) {
-  // node >= 3.0 supports EE#listenerCount()
-  if (EventEmitter.prototype.listenerCount) {
-    return EventEmitter.prototype.listenerCount.call(this, event);
-  }
-
-  // compatability for node < 0.10
-  if (EventEmitter.listenerCount) {
+if (EventEmitter.prototype.listenerCount) {
+  // If the event emitter implements it's own listenerCount method
+  // we don't need to (newer nodes do this).
+  Log.prototype.listenerCount = EventEmitter.prototype.listenerCount;
+}
+else if (EventEmitter.listenerCount) {
+  // some versions of node expose EventEmitter::listenerCount
+  // which is more efficient the getting all listeners of a
+  // specific type
+  Log.prototype.listenerCount = function (event) {
     return EventEmitter.listenerCount(this, event);
-  }
-
-  return this.listeners(event).length;
-};
+  };
+}
+else {
+  // all other versions of node expose a #listeners() method, which returns
+  // and array we have to count
+  Log.prototype.listenerCount = function (event) {
+    return this.listeners(event).length;
+  };
+}
 
 /**
  * Levels observed by the loggers, ordered by rank
@@ -52465,6 +52472,8 @@ Json.prototype.serialize = function (val, replacer, spaces) {
   }
 };
 
+Json.prototype.serialize.contentType = 'application/json';
+
 /**
  * Parse a JSON string, if it is already parsed it is ignored
  * @param  {String} str - the string to parse
@@ -52495,6 +52504,8 @@ Json.prototype.bulkBody = function (val) {
   return body;
 };
 
+Json.prototype.bulkBody.contentType = 'application/x-ldjson';
+
 },{"../utils":44}],41:[function(require,module,exports){
 var process=require("__browserify_process");/**
  * Class that manages making request, called by all of the API methods.
@@ -52505,7 +52516,7 @@ module.exports = Transport;
 var _ = require('./utils');
 var errors = require('./errors');
 var Host = require('./host');
-var Promise = require('bluebird');
+var Promise = require('promise-js');
 var patchSniffOnConnectionFault = require('./transport/sniff_on_connection_fault');
 var findCommonProtocol = require('./transport/find_common_protocol');
 
@@ -52603,7 +52614,12 @@ Transport.nodesToHostCallbacks = {
 };
 
 Transport.prototype.defer = function () {
-  return Promise.defer();
+  var defer = {};
+  defer.promise = new Promise(function (resolve, reject) {
+    defer.resolve = resolve;
+    defer.reject = reject;
+  });
+  return defer;
 };
 
 /**
@@ -52634,6 +52650,11 @@ Transport.prototype.request = function (params, cb) {
   var ret; // the object returned to the user, might be a promise
   var defer; // the defer object, will be set when we are using promises.
 
+  var body = params.body;
+  var headers = !params.headers ? {} : _.transform(params.headers, function (headers, val, name) {
+    headers[String(name).toLowerCase()] = val;
+  });
+
   self.log.debug('starting request', params);
 
   // determine the response based on the presense of a callback
@@ -52651,14 +52672,20 @@ Transport.prototype.request = function (params, cb) {
     ret.abort = abortRequest;
   }
 
-  if (params.body && params.method === 'GET') {
+  if (body && params.method === 'GET') {
     _.nextTick(respond, new TypeError('Body can not be sent with method "GET"'));
     return ret;
   }
 
   // serialize the body
-  if (params.body) {
-    params.body = self.serializer[params.bulkBody ? 'bulkBody' : 'serialize'](params.body);
+  if (body) {
+    var serializer = self.serializer;
+    var serializeFn = serializer[params.bulkBody ? 'bulkBody' : 'serialize'];
+
+    body = serializeFn.call(serializer, body);
+    if (!headers['content-type']) {
+      headers['content-type'] = serializeFn.contentType;
+    }
   }
 
   if (params.hasOwnProperty('maxRetries')) {
@@ -52673,8 +52700,8 @@ Transport.prototype.request = function (params, cb) {
     method: params.method,
     path: params.path || '/',
     query: params.query,
-    body: params.body,
-    headers: params.headers
+    body: body,
+    headers: headers
   };
 
   function sendReqWithConnection(err, _connection) {
@@ -52907,7 +52934,7 @@ Transport.prototype.close = function () {
   this.connectionPool.close();
 };
 
-},{"./connection_pool":25,"./errors":28,"./host":29,"./log":30,"./nodes_to_host":34,"./serializers":39,"./transport/find_common_protocol":42,"./transport/sniff_on_connection_fault":43,"./utils":44,"__browserify_process":14,"bluebird":9}],42:[function(require,module,exports){
+},{"./connection_pool":25,"./errors":28,"./host":29,"./log":30,"./nodes_to_host":34,"./serializers":39,"./transport/find_common_protocol":42,"./transport/sniff_on_connection_fault":43,"./utils":44,"__browserify_process":14,"promise-js":9}],42:[function(require,module,exports){
 var isEmpty = require('lodash').isEmpty;
 
 module.exports = function (hosts) {
