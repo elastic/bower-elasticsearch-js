@@ -1,4 +1,4 @@
-/*! elasticsearch - v10.1.1 - 2016-01-10
+/*! elasticsearch - v10.1.2 - 2016-01-10
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2016 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -66031,12 +66031,24 @@ Transport.prototype.request = function (params, cb) {
 
     if (err) {
       connection.setStatus('dead');
+
+      var errMsg = err.message || '';
+
+      errMsg =
+        "\n" +
+        params.req.method +
+        ' ' +
+        connection.host.makeUrl(params.req) +
+        (errMsg.length ? ' => ' : '') +
+        errMsg
+      ;
+
       if (remainingRetries) {
         remainingRetries--;
-        self.log.error('Request error, retrying' + (err.message ? ' -- ' + err.message : ''));
+        self.log.error('Request error, retrying' + errMsg);
         self.connectionPool.select(sendReqWithConnection);
       } else {
-        self.log.error('Request complete with error' + (err.message ? ' -- ' + err.message : ''));
+        self.log.error('Request complete with error' + errMsg);
         respond(new errors.ConnectionFault(err));
       }
     } else {
