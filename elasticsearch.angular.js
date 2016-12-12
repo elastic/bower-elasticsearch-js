@@ -1,4 +1,4 @@
-/*! elasticsearch - v12.1.1 - 2016-12-11
+/*! elasticsearch - v12.1.2 - 2016-12-12
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2016 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -23459,7 +23459,6 @@
 /***/ function(module, exports, __webpack_require__) {
 
 	var _ = __webpack_require__(3);
-	var qs = __webpack_require__(20);
 	var errors = module.exports;
 
 	var canCapture = (typeof Error.captureStackTrace === 'function');
@@ -23619,7 +23618,7 @@
 	      // errors from es now come in two forms, an error string < 2.0 and
 	      // an object >= 2.0
 	      // TODO: remove after dropping support for < 2.0
-	      ErrorAbstract.call(this, msg || primaryName, StatusCodeError);
+	      ErrorAbstract.call(this, msg || primaryName, StatusCodeError, metadata);
 	      return this;
 	    }
 
