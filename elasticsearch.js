@@ -1,4 +1,4 @@
-/*! elasticsearch - v13.0.0-beta1 - 2017-02-14
+/*! elasticsearch - v13.0.0-beta2 - 2017-02-22
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2017 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -16900,7 +16900,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	  return body;
 	};
 
-	Json.prototype.bulkBody.contentType = 'application/x-ldjson';
+	Json.prototype.bulkBody.contentType = 'application/x-ndjson';
 
 
 /***/ },
@@ -17229,7 +17229,13 @@ return /******/ (function(modules) { // webpackBootstrap
 	  }
 
 	  if (!params.body && spec.paramAsBody) {
-	    params.body = params[spec.paramAsBody];
+	    if (typeof spec.paramAsBody === 'object') {
+	      params.body = {};
+	      params.body[spec.paramAsBody.body] = params[spec.paramAsBody.param];
+	    } else {
+	      params.body = params[spec.paramAsBody];
+	    }
+
 	    delete params[spec.paramAsBody];
 	  }
 
@@ -53071,7 +53077,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	      fmt: '/_search/scroll'
 	    }
 	  ],
-	  paramAsBody: 'scrollId',
+	  paramAsBody: {
+	    param: 'scrollId',
+	    body: 'scroll_id'
+	  },
 	  method: 'DELETE'
 	});
 
@@ -57728,7 +57737,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	      fmt: '/_search/scroll'
 	    }
 	  ],
-	  paramAsBody: 'scrollId',
+	  paramAsBody: {
+	    param: 'scrollId',
+	    body: 'scroll_id'
+	  },
 	  method: 'POST'
 	});
 
@@ -60234,7 +60246,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	      fmt: '/_search/scroll'
 	    }
 	  ],
-	  paramAsBody: 'scrollId',
+	  paramAsBody: {
+	    param: 'scrollId',
+	    body: 'scroll_id'
+	  },
 	  method: 'DELETE'
 	});
 
@@ -64881,7 +64896,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	      fmt: '/_search/scroll'
 	    }
 	  ],
-	  paramAsBody: 'scrollId',
+	  paramAsBody: {
+	    param: 'scrollId',
+	    body: 'scroll_id'
+	  },
 	  method: 'POST'
 	});
 
