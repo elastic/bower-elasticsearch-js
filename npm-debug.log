@@ -1,0 +1,62 @@
+0 info it worked if it ends with ok
+1 verbose cli [ '/Users/spalger/.nvm/versions/node/v6.9.5/bin/node',
+1 verbose cli   '/Users/spalger/.nvm/versions/node/v6.9.5/bin/npm',
+1 verbose cli   'dist-tag',
+1 verbose cli   'rm',
+1 verbose cli   'elasticsearch-browser@12.0.0-rc5',
+1 verbose cli   'prerelease' ]
+2 info using npm@3.10.10
+3 info using node@v6.9.5
+4 verbose dist-tag del prerelease from elasticsearch-browser@12.0.0-rc5
+5 silly mapToRegistry name elasticsearch-browser@12.0.0-rc5
+6 silly mapToRegistry using default registry
+7 silly mapToRegistry registry https://registry.npmjs.org/
+8 silly mapToRegistry data Result {
+8 silly mapToRegistry   raw: 'elasticsearch-browser@12.0.0-rc5',
+8 silly mapToRegistry   scope: null,
+8 silly mapToRegistry   escapedName: 'elasticsearch-browser',
+8 silly mapToRegistry   name: 'elasticsearch-browser',
+8 silly mapToRegistry   rawSpec: '12.0.0-rc5',
+8 silly mapToRegistry   spec: '12.0.0-rc5',
+8 silly mapToRegistry   type: 'version' }
+9 silly mapToRegistry uri https://registry.npmjs.org/elasticsearch-browser@12.0.0-rc5
+10 verbose request uri https://registry.npmjs.org/-/package/elasticsearch-browser@12.0.0-rc5/dist-tags
+11 verbose request no auth needed
+12 info attempt registry request try #1 at 8:37:52 AM
+13 verbose request using bearer token for auth
+14 verbose request id bd5ad1e0d332cb64
+15 http request GET https://registry.npmjs.org/-/package/elasticsearch-browser@12.0.0-rc5/dist-tags
+16 http 403 https://registry.npmjs.org/-/package/elasticsearch-browser@12.0.0-rc5/dist-tags
+17 verbose headers { 'content-type': 'application/json',
+17 verbose headers   'cache-control': 'max-age=0',
+17 verbose headers   'content-length': '116',
+17 verbose headers   'accept-ranges': 'bytes',
+17 verbose headers   date: 'Wed, 22 Feb 2017 15:37:51 GMT',
+17 verbose headers   via: '1.1 varnish',
+17 verbose headers   connection: 'keep-alive',
+17 verbose headers   'x-served-by': 'cache-lax8638-LAX',
+17 verbose headers   'x-cache': 'MISS',
+17 verbose headers   'x-cache-hits': '0',
+17 verbose headers   'x-timer': 'S1487777871.705441,VS0,VE182' }
+18 verbose stack Error: Registry returned 403 for GET on https://registry.npmjs.org/-/package/elasticsearch-browser@12.0.0-rc5/dist-tags
+18 verbose stack     at makeError (/Users/spalger/.nvm/versions/node/v6.9.5/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:302:12)
+18 verbose stack     at CachingRegistryClient.<anonymous> (/Users/spalger/.nvm/versions/node/v6.9.5/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:280:14)
+18 verbose stack     at Request._callback (/Users/spalger/.nvm/versions/node/v6.9.5/lib/node_modules/npm/node_modules/npm-registry-client/lib/request.js:210:14)
+18 verbose stack     at Request.self.callback (/Users/spalger/.nvm/versions/node/v6.9.5/lib/node_modules/npm/node_modules/request/request.js:187:22)
+18 verbose stack     at emitTwo (events.js:106:13)
+18 verbose stack     at Request.emit (events.js:191:7)
+18 verbose stack     at Request.<anonymous> (/Users/spalger/.nvm/versions/node/v6.9.5/lib/node_modules/npm/node_modules/request/request.js:1048:10)
+18 verbose stack     at emitOne (events.js:96:13)
+18 verbose stack     at Request.emit (events.js:188:7)
+18 verbose stack     at IncomingMessage.<anonymous> (/Users/spalger/.nvm/versions/node/v6.9.5/lib/node_modules/npm/node_modules/request/request.js:969:12)
+19 verbose statusCode 403
+20 verbose cwd /Users/spalger/dev/elasticsearch-js/src/bower_es_js
+21 error Darwin 16.4.0
+22 error argv "/Users/spalger/.nvm/versions/node/v6.9.5/bin/node" "/Users/spalger/.nvm/versions/node/v6.9.5/bin/npm" "dist-tag" "rm" "elasticsearch-browser@12.0.0-rc5" "prerelease"
+23 error node v6.9.5
+24 error npm  v3.10.10
+25 error code E403
+26 error Registry returned 403 for GET on https://registry.npmjs.org/-/package/elasticsearch-browser@12.0.0-rc5/dist-tags
+27 error If you need help, you may report this error at:
+27 error     <https://github.com/npm/npm/issues>
+28 verbose exit [ 1, true ]
