@@ -1,4 +1,4 @@
-/*! elasticsearch - v13.0.0-rc1 - 2017-04-04
+/*! elasticsearch - v13.0.0-rc2 - 2017-04-05
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2017 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -17206,11 +17206,11 @@
 	    if (typeof spec.paramAsBody === 'object') {
 	      params.body = {};
 	      params.body[spec.paramAsBody.body] = params[spec.paramAsBody.param];
+	      delete params[spec.paramAsBody.param];
 	    } else {
 	      params.body = params[spec.paramAsBody];
+	      delete params[spec.paramAsBody];
 	    }
-
-	    delete params[spec.paramAsBody];
 	  }
 
 	  // verify that we have the body if needed
