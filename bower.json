@@ -1,6 +1,6 @@
 {
   "name": "elasticsearch",
-  "version": "13.0.0-rc2",
+  "version": "13.0.0",
   "authors": [
     "Spencer Alger <spencer@spenceralger.com>"
   ],

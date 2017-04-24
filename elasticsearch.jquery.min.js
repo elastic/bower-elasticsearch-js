@@ -1,4 +1,4 @@
-/*! elasticsearch - v13.0.0-rc2 - 2017-04-05
+/*! elasticsearch - v13.0.0 - 2017-04-24
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2017 Elasticsearch BV; Licensed Apache-2.0 */
 
