@@ -1,4 +1,4 @@
-/*! elasticsearch - v13.1.0 - 2017-06-12
+/*! elasticsearch - v13.1.1 - 2017-06-14
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2017 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -19636,7 +19636,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 	/**
-	 * Perform a [existsSource](http://www.elastic.co/guide/en/elasticsearch/reference/master/docs-get.html) request
+	 * Perform a [existsSource](http://www.elastic.co/guide/en/elasticsearch/reference/5.4/docs-get.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 * @param {<<api-param-type-string,`String`>>} params.parent - The ID of the parent document
@@ -19803,7 +19803,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 	/**
-	 * Perform a [fieldCaps](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-field-caps.html) request
+	 * Perform a [fieldCaps](http://www.elastic.co/guide/en/elasticsearch/reference/5.4/search-field-caps.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.fields - A comma-separated list of field names
@@ -23358,7 +23358,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	api.remote = namespace();
 
 	/**
-	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/master/remote-info.html) request
+	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/5.4/cluster-remote-info.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 */
@@ -53228,7 +53228,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var namespace = __webpack_require__(46).namespaceFactory;
 	var api = module.exports = {};
 
-	api._namespaces = ['cat', 'cluster', 'indices', 'ingest', 'ingest.processor', 'nodes', 'remote', 'snapshot', 'tasks'];
+	api._namespaces = ['cat', 'cluster', 'indices', 'ingest', 'ingest.prototype.processor', 'nodes', 'remote', 'snapshot', 'tasks'];
 
 	/**
 	 * Perform a [bulk](https://www.elastic.co/guide/en/elasticsearch/reference/5.x/docs-bulk.html) request
@@ -55655,7 +55655,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 	/**
-	 * Perform a [fieldCaps](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-field-caps.html) request
+	 * Perform a [fieldCaps](http://www.elastic.co/guide/en/elasticsearch/reference/5.x/search-field-caps.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.fields - A comma-separated list of field names
@@ -58199,6 +58199,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	  ]
 	});
 
+	api.ingest.prototype.processor = namespace();
+
 	/**
 	 * Perform a [ingest.processor.grok](https://www.elastic.co/guide/en/elasticsearch/plugins/master/ingest.html) request
 	 *
@@ -59226,7 +59228,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	api.remote = namespace();
 
 	/**
-	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/master/remote-info.html) request
+	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/5.x/cluster-remote-info.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 */
@@ -62873,7 +62875,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 	/**
-	 * Perform a [existsSource](http://www.elastic.co/guide/en/elasticsearch/reference/master/docs-get.html) request
+	 * Perform a [existsSource](http://www.elastic.co/guide/en/elasticsearch/reference/5.5/docs-get.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 * @param {<<api-param-type-string,`String`>>} params.parent - The ID of the parent document
@@ -63040,7 +63042,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 	/**
-	 * Perform a [fieldCaps](http://www.elastic.co/guide/en/elasticsearch/reference/master/search-field-caps.html) request
+	 * Perform a [fieldCaps](http://www.elastic.co/guide/en/elasticsearch/reference/5.5/search-field-caps.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.fields - A comma-separated list of field names
@@ -66600,7 +66602,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	api.remote = namespace();
 
 	/**
-	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/master/remote-info.html) request
+	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/5.5/cluster-remote-info.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 */
@@ -67987,7 +67989,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	var namespace = __webpack_require__(46).namespaceFactory;
 	var api = module.exports = {};
 
-	api._namespaces = ['cat', 'cluster', 'indices', 'ingest', 'ingest.processor', 'nodes', 'remote', 'snapshot', 'tasks'];
+	api._namespaces = ['cat', 'cluster', 'indices', 'ingest', 'ingest.prototype.processor', 'nodes', 'remote', 'snapshot', 'tasks'];
 
 	/**
 	 * Perform a [bulk](http://www.elastic.co/guide/en/elasticsearch/reference/master/docs-bulk.html) request
@@ -72808,6 +72810,8 @@ return /******/ (function(modules) { // webpackBootstrap
 	  ]
 	});
 
+	api.ingest.prototype.processor = namespace();
+
 	/**
 	 * Perform a [ingest.processor.grok](https://www.elastic.co/guide/en/elasticsearch/plugins/master/ingest.html) request
 	 *
@@ -73725,7 +73729,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	api.remote = namespace();
 
 	/**
-	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/master/remote-info.html) request
+	 * Perform a [remote.info](http://www.elastic.co/guide/en/elasticsearch/reference/master/cluster-remote-info.html) request
 	 *
 	 * @param {Object} params - An object with parameters used to carry out this action
 	 */
