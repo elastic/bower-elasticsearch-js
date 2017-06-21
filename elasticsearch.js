@@ -1,4 +1,4 @@
-/*! elasticsearch - v13.1.1 - 2017-06-14
+/*! elasticsearch - v13.1.2 - 2017-06-21
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2017 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -58,7 +58,7 @@ return /******/ (function(modules) { // webpackBootstrap
 /************************************************************************/
 /******/ ([
 /* 0 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	// In order to help people who were accidentally upgraded to this ES client,
 	// throw an error when they try to instanciate the exported function.
@@ -77,9 +77,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	module.exports = es;
 
 
-/***/ },
+/***/ }),
 /* 1 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/**
 	 * A client that makes requests to Elasticsearch via a {{#crossLink "Transport"}}Transport{{/crossLink}}
@@ -187,9 +187,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	Client.apis = __webpack_require__(47);
 
 
-/***/ },
+/***/ }),
 /* 2 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process) {/**
 	 * Class that manages making request, called by all of the API methods.
@@ -612,7 +612,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	      try {
 	        hostsConfigs = nodesToHostCallback(resp.nodes);
 	      } catch (e) {
-	        log.error(new Error('Unable to convert node list from ' + this.sniffEndpoint +
+	        log.error(new Error('Unable to convert node list from ' + self.sniffEndpoint +
 	          ' to hosts durring sniff. Encountered error:\n' + (e.stack || e.message)));
 	        return;
 	      }
@@ -654,9 +654,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
-/***/ },
+/***/ }),
 /* 3 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	// shim for using process in browser
 	var process = module.exports = {};
@@ -828,6 +828,10 @@ return /******/ (function(modules) { // webpackBootstrap
 	process.removeListener = noop;
 	process.removeAllListeners = noop;
 	process.emit = noop;
+	process.prependListener = noop;
+	process.prependOnceListener = noop;
+
+	process.listeners = function (name) { return [] }
 
 	process.binding = function (name) {
 	    throw new Error('process.binding is not supported');
@@ -840,9 +844,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	process.umask = function() { return 0; };
 
 
-/***/ },
+/***/ }),
 /* 4 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process, Buffer) {var path = __webpack_require__(9);
 	var nodeUtils = __webpack_require__(10);
@@ -1294,9 +1298,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3), __webpack_require__(5).Buffer))
 
-/***/ },
+/***/ }),
 /* 5 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(global) {/*!
 	 * The buffer module from node.js, for the browser.
@@ -3090,9 +3094,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
-/***/ },
+/***/ }),
 /* 6 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	'use strict'
 
@@ -3210,9 +3214,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 7 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	exports.read = function (buffer, offset, isLE, mLen, nBytes) {
 	  var e, m
@@ -3300,9 +3304,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 8 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	var toString = {}.toString;
 
@@ -3311,9 +3315,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 9 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process) {// Copyright Joyent, Inc. and other Node contributors.
 	//
@@ -3542,9 +3546,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
-/***/ },
+/***/ }),
 /* 10 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(global, process) {// Copyright Joyent, Inc. and other Node contributors.
 	//
@@ -4135,9 +4139,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }()), __webpack_require__(3)))
 
-/***/ },
+/***/ }),
 /* 11 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	module.exports = function isBuffer(arg) {
 	  return arg && typeof arg === 'object'
@@ -4146,9 +4150,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	    && typeof arg.readUInt8 === 'function';
 	}
 
-/***/ },
+/***/ }),
 /* 12 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	if (typeof Object.create === 'function') {
 	  // implementation from standard node.js 'util' module
@@ -4175,9 +4179,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 13 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_RESULT__;/* WEBPACK VAR INJECTION */(function(module, global) {/**
 	 * @license
@@ -11340,9 +11344,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)(module), (function() { return this; }())))
 
-/***/ },
+/***/ }),
 /* 14 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	module.exports = function(module) {
 		if(!module.webpackPolyfill) {
@@ -11356,9 +11360,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 15 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	/* WEBPACK VAR INJECTION */(function(global) {/**
 	 * lodash (Custom Build) <https://lodash.com/>
@@ -12294,9 +12298,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
-/***/ },
+/***/ }),
 /* 16 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	/* WEBPACK VAR INJECTION */(function(global) {/**
 	 * lodash (Custom Build) <https://lodash.com/>
@@ -12668,9 +12672,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }())))
 
-/***/ },
+/***/ }),
 /* 17 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var _ = __webpack_require__(4);
 	var errors = module.exports;
@@ -12885,9 +12889,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 18 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(Buffer) {/**
 	 * Class to wrap URLS, formatting them and maintaining their separate details
@@ -13099,9 +13103,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(5).Buffer))
 
-/***/ },
+/***/ }),
 /* 19 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
 	//
@@ -13837,9 +13841,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 20 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var __WEBPACK_AMD_DEFINE_RESULT__;/* WEBPACK VAR INJECTION */(function(module, global) {/*! https://mths.be/punycode v1.3.2 by @mathias */
 	;(function(root) {
@@ -14372,9 +14376,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(14)(module), (function() { return this; }())))
 
-/***/ },
+/***/ }),
 /* 21 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	'use strict';
 
@@ -14394,9 +14398,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 22 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	'use strict';
 
@@ -14404,9 +14408,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	exports.encode = exports.stringify = __webpack_require__(24);
 
 
-/***/ },
+/***/ }),
 /* 23 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
 	//
@@ -14490,9 +14494,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 24 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
 	//
@@ -14560,9 +14564,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 25 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var _ = __webpack_require__(4);
 
@@ -14625,9 +14629,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 26 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var isEmpty = __webpack_require__(27);
 
@@ -14645,9 +14649,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 27 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(global, module) {/**
 	 * lodash (Custom Build) <https://lodash.com/>
@@ -15234,9 +15238,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, (function() { return this; }()), __webpack_require__(14)(module)))
 
-/***/ },
+/***/ }),
 /* 28 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process) {var _ = __webpack_require__(4);
 	var url = __webpack_require__(19);
@@ -15553,9 +15557,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
-/***/ },
+/***/ }),
 /* 29 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	// Copyright Joyent, Inc. and other Node contributors.
 	//
@@ -15861,18 +15865,18 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 30 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	module.exports = {
 	  console: __webpack_require__(31)
 	};
 
 
-/***/ },
+/***/ }),
 /* 31 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/**
 	 * Special version of the Stream logger, which logs errors and warnings to stderr and all other
@@ -15975,9 +15979,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 32 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var _ = __webpack_require__(4);
 
@@ -16161,9 +16165,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	module.exports = LoggerAbstract;
 
 
-/***/ },
+/***/ }),
 /* 33 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* WEBPACK VAR INJECTION */(function(process) {/**
 	 * Manager of connections to a node(s), capable of ensuring that connections are clear and living
@@ -16511,9 +16515,9 @@ return /******/ (function(modules) { // webpackBootstrap
 
 	/* WEBPACK VAR INJECTION */}.call(exports, __webpack_require__(3)))
 
-/***/ },
+/***/ }),
 /* 34 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	module.exports = {
 	  random: __webpack_require__(35),
@@ -16521,9 +16525,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 35 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	/**
 	 * Selects a connection randomly
@@ -16538,9 +16542,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 36 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	/**
 	 * Selects a connection the simplest way possible, Round Robin
@@ -16557,9 +16561,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 37 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var opts = {
 	  xhr: __webpack_require__(38),
@@ -16587,9 +16591,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	module.exports = opts;
 
 
-/***/ },
+/***/ }),
 /* 38 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/**
 	 * Generic Transport for the browser, using the XmlHttpRequest object
@@ -16680,9 +16684,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 39 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	module.exports = ConnectionAbstract;
 
@@ -16785,21 +16789,21 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 40 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	// empty (null-loader)
 
-/***/ },
+/***/ }),
 /* 41 */
-/***/ function(module, exports) {
+/***/ (function(module, exports) {
 
 	// empty (null-loader)
 
-/***/ },
+/***/ }),
 /* 42 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	module.exports = {
 	  angular: __webpack_require__(43),
@@ -16807,9 +16811,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 43 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/* global angular */
 	var _ = __webpack_require__(4);
@@ -16834,9 +16838,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	module.exports = AngularSerializer;
 
 
-/***/ },
+/***/ }),
 /* 44 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	/**
 	 * Simple JSON serializer
@@ -16903,9 +16907,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	Json.prototype.bulkBody.contentType = 'application/x-ndjson';
 
 
-/***/ },
+/***/ }),
 /* 45 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var _ = __webpack_require__(4);
 
@@ -16968,9 +16972,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	module.exports = makeNodeParser('http.publish_address');
 
 
-/***/ },
+/***/ }),
 /* 46 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	
 	var _ = __webpack_require__(4);
@@ -17342,9 +17346,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	}
 
 
-/***/ },
+/***/ }),
 /* 47 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	module.exports = {
 	  '_default': __webpack_require__(48),
@@ -17359,9 +17363,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	};
 
 
-/***/ },
+/***/ }),
 /* 48 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -21713,8 +21717,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -21737,13 +21739,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -24724,9 +24719,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 49 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -28906,8 +28901,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -28930,13 +28923,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -31873,9 +31859,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 50 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -36057,8 +36043,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -36081,13 +36065,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -39031,9 +39008,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 51 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -43215,8 +43192,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -43239,13 +43214,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -46189,9 +46157,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 52 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -50252,8 +50220,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -50276,13 +50242,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -53211,9 +53170,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 53 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -57565,8 +57524,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -57589,13 +57546,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -60598,9 +60548,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 54 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -64952,8 +64902,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -64976,13 +64924,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -67972,9 +67913,9 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ },
+/***/ }),
 /* 55 */
-/***/ function(module, exports, __webpack_require__) {
+/***/ (function(module, exports, __webpack_require__) {
 
 	var ca = __webpack_require__(46).makeFactoryWithModifier(function (spec) {
 	  return __webpack_require__(4).merge(spec, {
@@ -72178,8 +72119,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.ignoreUnavailable - Whether specified concrete indices should be ignored when unavailable (missing or closed)
 	 * @param {<<api-param-type-boolean,`Boolean`>>} params.allowNoIndices - Whether to ignore if a wildcard indices expression resolves into no concrete indices. (This includes `_all` string or when no indices have been specified)
 	 * @param {<<api-param-type-string,`String`>>} [params.expandWildcards=open] - Whether to expand wildcard expression to concrete indices that are open, closed or both.
-	 * @param {<<api-param-type-boolean,`Boolean`>>} params.force - Force a refresh even if not required
-	 * @param {anything} params.operationThreading - TODO: ?
 	 * @param {<<api-param-type-string,`String`>>, <<api-param-type-string-array,`String[]`>>, <<api-param-type-boolean,`Boolean`>>} params.index - A comma-separated list of index names; use `_all` or empty string to perform the operation on all indices
 	 */
 	api.indices.prototype.refresh = ca({
@@ -72202,13 +72141,6 @@ return /******/ (function(modules) { // webpackBootstrap
 	        'all'
 	      ],
 	      name: 'expand_wildcards'
-	    },
-	    force: {
-	      type: 'boolean',
-	      'default': false
-	    },
-	    operationThreading: {
-	      name: 'operation_threading'
 	    }
 	  },
 	  urls: [
@@ -75036,7 +74968,7 @@ return /******/ (function(modules) { // webpackBootstrap
 	});
 
 
-/***/ }
+/***/ })
 /******/ ])
 });
 ;
