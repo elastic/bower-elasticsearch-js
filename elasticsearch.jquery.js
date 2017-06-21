@@ -1,4 +1,4 @@
-/*! elasticsearch - v13.1.2 - 2017-06-21
+/*! elasticsearch - v13.2.0 - 2017-06-21
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2017 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -475,6 +475,18 @@
 	    self.sniffedNodesProtocol = findCommonProtocol(self.connectionPool.getAllHosts()) || null;
 	  }
 
+	  if (config.hasOwnProperty('sniffedNodesFilterPath')) {
+	    self.sniffedNodesFilterPath = config.sniffedNodesFilterPath;
+	  } else {
+	    self.sniffedNodesFilterPath = [
+	      'nodes.*.http.publish_address',
+	      'nodes.*.name',
+	      'nodes.*.hostname',
+	      'nodes.*.host',
+	      'nodes.*.version',
+	    ].join(',');
+	  }
+
 	  if (config.sniffOnStart) {
 	    self.sniff();
 	  }
@@ -798,21 +810,14 @@
 	  var nodesToHostCallback = this.nodesToHostCallback;
 	  var log = this.log;
 	  var sniffedNodesProtocol = this.sniffedNodesProtocol;
+	  var sniffedNodesFilterPath = this.sniffedNodesFilterPath;
 
 	  // make cb a function if it isn't
 	  cb = typeof cb === 'function' ? cb : _.noop;
 
 	  this.request({
 	    path: this.sniffEndpoint,
-	    query: {
-	      filter_path: [
-	        'nodes.*.http.publish_address',
-	        'nodes.*.name',
-	        'nodes.*.hostname',
-	        'nodes.*.host',
-	        'nodes.*.version',
-	      ].join(','),
-	    },
+	    query: { filter_path: sniffedNodesFilterPath },
 	    method: 'GET'
 	  }, function (err, resp, status) {
 	    if (!err && resp && resp.nodes) {
