@@ -1,4 +1,4 @@
-/*! elasticsearch - v13.3.0 - 2017-08-08
+/*! elasticsearch - v13.3.1 - 2017-08-08
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2017 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -17356,8 +17356,8 @@ return /******/ (function(modules) { // webpackBootstrap
 /***/ (function(module, exports, __webpack_require__) {
 
 	module.exports = {
+	  '_default': __webpack_require__(48),
 	  '5.5': __webpack_require__(48),
-	  '_default': __webpack_require__(49),
 	  '5.4': __webpack_require__(49),
 	  '5.3': __webpack_require__(50),
 	  '5.2': __webpack_require__(51),
