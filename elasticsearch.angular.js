@@ -1,4 +1,4 @@
-/*! elasticsearch - v15.1.0 - 2018-07-03
+/*! elasticsearch - v15.1.1 - 2018-07-03
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2018 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -29490,7 +29490,11 @@ Json.prototype.serialize = function (val, replacer, spaces) {
 
     case 'object':
       if (val) {
-        return JSON.stringify(val, replacer, spaces);
+        if (replacer || spaces) {
+          return JSON.stringify(val, replacer, spaces);
+        } else {
+          return JSON.stringify(val);
+        }
       }
 
     /* falls through */
