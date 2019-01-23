@@ -1,4 +1,4 @@
-/*! elasticsearch - v15.3.0 - 2019-01-09
+/*! elasticsearch - v15.3.1 - 2019-01-23
  * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
  * Copyright (c) 2019 Elasticsearch BV; Licensed Apache-2.0 */
 
