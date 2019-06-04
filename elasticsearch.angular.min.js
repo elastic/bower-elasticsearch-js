@@ -1,5 +1,5 @@
-/*! elasticsearch - v16.1.0 - 2019-05-29
- * http://www.elastic.co/guide/en/elasticsearch/client/javascript-api/current/index.html
+/*! elasticsearch - v16.1.1 - 2019-06-04
+ * https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/index.html
  * Copyright (c) 2019 Elasticsearch BV; Licensed Apache-2.0 */
 
 ;(function () {
