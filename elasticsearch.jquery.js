@@ -1,4 +1,4 @@
-/*! elasticsearch - v16.2.0 - 2019-07-03
+/*! elasticsearch - v16.3.0 - 2019-07-10
  * https://www.elastic.co/guide/en/elasticsearch/client/javascript-api/16.x/index.html
  * Copyright (c) 2019 Elasticsearch BV; Licensed Apache-2.0 */
 
@@ -17289,7 +17289,7 @@ function makeFactoryWithModifier(modifier) {
 }
 
 var castType = {
-  'enum': function validSelection(param, val, name) {
+  enum: function validSelection(param, val, name) {
     if (_.isString(val) && val.indexOf(',') > -1) {
       val = commaSepList(val);
     }
@@ -17337,7 +17337,7 @@ var castType = {
         throw new TypeError('Invalid ' + name + ': expected be a comma separated list, array, number or string.');
     }
   },
-  'boolean': function boolean(param, val) {
+  boolean: function boolean(param, val) {
     val = _.isString(val) ? val.toLowerCase() : val;
     return val === 'no' || val === 'off' ? false : !!val;
   },
@@ -17372,9 +17372,9 @@ var castType = {
 };
 
 function resolveUrl(url, params) {
-  var vars = {},
-      i,
-      key;
+  var vars = {};
+  var i;
+  var key;
 
   if (url.req) {
     // url has required params
@@ -17482,7 +17482,9 @@ function exec(transport, spec, params, cb) {
     request.path = resolveUrl(spec.url, params);
   } else {
     for (i = 0; i < spec.urls.length; i++) {
-      if (request.path = resolveUrl(spec.urls[i], params)) {
+      request.path = resolveUrl(spec.urls[i], params);
+
+      if (request.path) {
         break;
       }
     }
@@ -19055,7 +19057,7 @@ Transport.prototype._timeout = function (cb, delay) {
   var id;
   var timers = this._timers || (this._timers = []);
 
-  if ('function' !== typeof cb) {
+  if (typeof cb !== 'function') {
     id = cb;
     cb = void 0;
   }
@@ -23066,12 +23068,11 @@ LoggerAbstract.prototype._formatTraceMessage = function (req) {
   /*
   -> GET https://sldfkjsdlfksjdf:9200/slsdkfjlxckvxhclks?sdlkj=sdlfkje
   {
-    asdflksjdf
+  asdflksjdf
   }
-  
   <- 502
   {
-    sldfksjdlf
+  sldfksjdlf
   }
   */
 };
@@ -23292,7 +23293,7 @@ Json.prototype.serialize = function (val, replacer, spaces) {
     /* falls through */
 
     default:
-      return;
+      return undefined;
   }
 };
 
@@ -23312,8 +23313,8 @@ Json.prototype.deserialize = function (str) {
 };
 
 Json.prototype.bulkBody = function (val) {
-  var body = '',
-      i;
+  var body = '';
+  var i;
 
   if (_.isArray(val)) {
     for (i = 0; i < val.length; i++) {
@@ -31808,7 +31809,7 @@ AngularSerializer.prototype.encode = function (val) {
     /* falls through */
 
     default:
-      return;
+      return undefined;
   }
 };
 
