@@ -19,7 +19,7 @@ Add a `<script>` to your html file and off you go!:
 </script>
 ```
 
-## If you are using Angular
+## If you are using AngularJS
 Use `elasticsearch.angular.js` instead. This will create an `elasticsearch` module with an `esFactory` that you can use.
 ```
 /*
@@ -37,6 +37,34 @@ app.service('es', function (esFactory) {
     // ...
   });
 });
+```
+## If you are using Angular2+
+in your module:
+
+```typescript
+import * as es from 'elasticsearch-browser/elasticsearch'
+
+@NgModule({
+  providers: [
+    {
+      provide: 'elasticsearch',
+      useFactory: () => {
+        return new es.Client({
+          host: 'https://localhost:9200',
+        });
+      },
+      deps: [],
+    }
+  ]
+})
+export class AppModule {}
+```
+in your service:
+
+```typescript
+export class ExampleService {
+  constructor(@Inject('elasticsearch') private readonly elasticClient) {}
+}
 ```
 
 ## If you are using jQuery
