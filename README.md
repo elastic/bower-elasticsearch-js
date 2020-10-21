@@ -59,6 +59,7 @@ import * as es from 'elasticsearch-browser/elasticsearch'
 })
 export class AppModule {}
 ```
+
 in your service:
 
 ```typescript
